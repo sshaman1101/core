@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+
+	stdlog "log"
+	_ "net/http/pprof"
 
 	log "github.com/noxiouz/zapctx/ctxlog"
 	"github.com/sonm-io/core/cmd"
@@ -22,6 +26,10 @@ var (
 )
 
 func main() {
+	go func() {
+		stdlog.Println(http.ListenAndServe("localhost:8080", nil))
+	}()
+
 	cmd.NewCmd("dwh", appVersion, &configFlag, &versionFlag, run).Execute()
 }
 

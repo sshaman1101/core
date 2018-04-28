@@ -65,3 +65,7 @@ blockchain/build
 vendor/github.com/golang/mock/mockgen/mockgen
 
 token.txt
+
+# profiling stuff
+*.svg
+perf.data

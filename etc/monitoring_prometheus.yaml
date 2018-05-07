@@ -1,0 +1,43 @@
+global:
+  scrape_interval: 5s
+  external_labels:
+    monitor: 'sonm'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['[::1]:8090']
+
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]  # Look for a HTTP 200 response.
+    static_configs:
+      - targets:
+        - https://private-dev.sonm.io/ping # Main ETH node.
+        - http://92.53.70.228:8545/ping    # Reserve ETH node.
+        - http://82.202.255.34:8545/ping   # Reserve ETH node.
+        - http://5.178.85.52:15022
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "[::1]:9115"  # The blackbox exporter's real hostname:port.
+  - job_name: 'blackbox_tcp'
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+        - 5.178.85.52:15021 # DWH gRPC.
+        - 138.68.91.1:12240 # Relay.
+        - "[2a03:b0c0:3:d0::bfc:5001]:14099" # Rendezvous.
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "[::1]:9115"  # The blackbox exporter's real hostname:port.

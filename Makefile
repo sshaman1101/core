@@ -30,6 +30,7 @@ RELAY=${TARGETDIR}/sonmrelay_$(OS_ARCH)
 LSGPU=${TARGETDIR}/lsgpu_$(OS_ARCH)
 PANDORA=${TARGETDIR}/pandora_$(OS_ARCH)
 OPTIMUS=${TARGETDIR}/optimus_$(OS_ARCH)
+METRICS=${TARGETDIR}/monitoring_$(OS_ARCH)
 
 TAGS=nocgo
 
@@ -112,9 +113,21 @@ build/optimus:
 	@echo "+ $@"
 	${GO} build -tags "$(TAGS)" -ldflags "-s $(LDFLAGS)" -o ${OPTIMUS} ${GOCMD}/optimus
 
+build/monitoring:
+	@echo "+ $@"
+	${GO} build -tags "$(TAGS)" -ldflags "-s $(LDFLAGS)" -o ${METRICS} ${GOCMD}/monitoring
+
+build/monitoring_linux:
+	@echo "+ $@"
+	GOOS=linux ${GO} build -tags "$(TAGS)" -ldflags "-s $(LDFLAGS)" -o ${TARGETDIR}/monitoring_linux_x86_64 ${GOCMD}/monitoring
+
+sync:
+	scp etc/monitoring_prometheus.yaml root@195.201.26.162:~/sonm-monitoring
+	scp target/monitoring_linux_x86_64 root@195.201.26.162:~/sonm-monitoring
+
 build/insomnia: build/worker build/cli build/node
 
-build/aux: build/relay build/rv build/dwh build/pandora build/optimus
+build/aux: build/relay build/rv build/dwh build/pandora build/optimus build/metrics
 
 build: build/insomnia build/aux
 

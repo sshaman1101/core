@@ -14,10 +14,9 @@ scrape_configs:
       module: [http_2xx]  # Look for a HTTP 200 response.
     static_configs:
       - targets:
-        - https://private-dev.sonm.io/ping # Main ETH node.
-        - http://92.53.70.228:8545/ping    # Reserve ETH node.
-        - http://82.202.255.34:8545/ping   # Reserve ETH node.
-        - http://5.178.85.52:15022
+        - https://sidechain-dev.sonm.com/ping # Main ETH node.
+        - http://92.53.70.228:8545/ping           # Reserve ETH node.
+        - http://82.202.255.34:8545/ping          # Reserve ETH node.
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -25,6 +24,23 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: "[::1]:9115"  # The blackbox exporter's real hostname:port.
+
+  - job_name: 'blackbox_http_post'
+    metrics_path: /probe
+    params:
+      module: [http_post_2xx_dwh]  # Look for a HTTP 200 response.
+    static_configs:
+      - targets:
+        - http://5.178.85.52:15022
+        - http://5.178.85.52:15022/DWHServer/GetOrderDetails
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "[::1]:9115"  # The blackbox exporter's real hostname:port.
+
   - job_name: 'blackbox_tcp'
     metrics_path: /probe
     params:

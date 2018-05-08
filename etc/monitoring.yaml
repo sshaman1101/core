@@ -1,0 +1,36 @@
+endpoint: "[::1]:9090"
+
+account:
+  key_store: "./keys"
+  pass_phrase: "any"
+
+logging:
+  # The desired logging level.
+  # Allowed values are "debug", "info", "warn", "error", "panic" and "fatal"
+  level: debug
+
+eth_target: &eth_target
+  type: eth
+  target: https://sidechain-dev.sonm.com
+  namespace: sonm
+  subsystem: eth
+  metrics: [status, histogram]
+  interval: 1s
+
+dwh_target: &dwh_target
+  type: grpc
+  target: 8125721C2413d99a33E351e1F6Bb4e56b6b633FD@5.178.85.52:15021
+  namespace: sonm
+  subsystem: dwh
+  metrics: [status, histogram]
+  interval: 1s
+
+checks:
+  - <<: *eth_target
+    request_uri: GetOrderInfo
+    args:
+      Id: 10
+  - <<: *dwh_target
+    request_uri: DWHServer/GetOrderDetails
+    args:
+      Id: 10

@@ -24,7 +24,7 @@ npp:
 # DWH service settings
 dwh:
   # marketplace gRPC endpoint, required
-  endpoint: "8125721C2413d99a33E351e1F6Bb4e56b6b633FD@127.0.0.1:15021"
+  endpoint: "8125721C2413d99a33E351e1F6Bb4e56b6b633FD@5.178.85.52:15021"
 
 # Matcher settings.
 # Matcher is routine that catches created BID orders and try to

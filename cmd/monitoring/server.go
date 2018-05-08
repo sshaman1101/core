@@ -118,8 +118,9 @@ func (m *GRPCRegistry) RegisterService(interfacePtr interface{}) error {
 	//
 	//	return m.RegisterServiceClient(interfacePtr, sonm.NewDWHClient(conn))
 	//}
+}
 
-	//func (m *GRPCRegistry) RegisterServiceClient(interfacePtr, concretePtr interface{}) error {
+func (m *GRPCRegistry) RegisterServiceClient(interfacePtr, concretePtr interface{}) error {
 	interfaceType := reflect.TypeOf(interfacePtr).Elem()
 	serviceName := strings.Replace(interfaceType.Name(), "Client", "Server", 1)
 

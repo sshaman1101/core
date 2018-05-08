@@ -34,3 +34,7 @@ checks:
     request_uri: DWHServer/GetOrderDetails
     args:
       Id: 10
+  - <<: *dwh_target
+    request_uri: DWHServer/GetDealDetails
+    args:
+      Id: 10

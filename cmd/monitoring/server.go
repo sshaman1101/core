@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/mitchellh/mapstructure"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sonm-io/core/accounts"
 	"github.com/sonm-io/core/cmd"
+	"github.com/sonm-io/core/insonmnia/logging"
 	"github.com/sonm-io/core/proto"
-	"github.com/sonm-io/core/util"
-	"github.com/sonm-io/core/util/xgrpc"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 var (
@@ -37,62 +37,10 @@ type Service struct {
 	Service  interface{}
 }
 
-type GRPCConnectionPool struct {
-	certificate util.HitlessCertRotator
-	credentials credentials.TransportCredentials
-	connections map[string]*grpc.ClientConn
-}
-
-func NewGRPCConnectionPool(ctx context.Context, cfg accounts.EthConfig) (*GRPCConnectionPool, error) {
-	privateKey, err := cfg.LoadKey(accounts.Silent())
-	if err != nil {
-		return nil, err
-	}
-
-	certificate, TLSConfig, err := util.NewHitlessCertRotator(ctx, privateKey)
-	if err != nil {
-		return nil, err
-	}
-
-	m := &GRPCConnectionPool{
-		certificate: certificate,
-		credentials: util.NewTLS(TLSConfig),
-		connections: map[string]*grpc.ClientConn{},
-	}
-
-	return m, nil
-}
-
-func (m *GRPCConnectionPool) GetOrCreateConnection(target string) (*grpc.ClientConn, error) {
-	conn, ok := m.connections[target]
-	if ok {
-		return conn, nil
-	}
-
-	conn, err := xgrpc.NewClient(context.Background(), target, m.credentials)
-	if err != nil {
-		return nil, err
-	}
-
-	m.connections[target] = conn
-	return conn, nil
-}
-
-func (m *GRPCConnectionPool) Close() error {
-	m.certificate.Close()
-
-	err := &multierror.Error{}
-
-	for _, conn := range m.connections {
-		err = multierror.Append(err, conn.Close())
-	}
-
-	return err.ErrorOrNil()
-}
-
 type GRPCRegistry struct {
-	connections *GRPCConnectionPool
-	services    map[string]*Service
+	connections       *GRPCConnectionPool
+	services          map[string]*Service
+	serviceInterfaces map[string]interface{}
 }
 
 func NewGRPCRegistry(ctx context.Context, cfg accounts.EthConfig) (*GRPCRegistry, error) {
@@ -102,31 +50,51 @@ func NewGRPCRegistry(ctx context.Context, cfg accounts.EthConfig) (*GRPCRegistry
 	}
 
 	m := &GRPCRegistry{
-		connections: connections,
-		services:    map[string]*Service{},
+		connections:       connections,
+		services:          map[string]*Service{},
+		serviceInterfaces: map[string]interface{}{},
 	}
 
 	return m, nil
 }
 
-func (m *GRPCRegistry) RegisterService(interfacePtr interface{}) error {
-	//}
-	//	conn, err := m.connections.GetOrCreateConnection(target)
-	//	if err != nil {
-	//		return err
-	//	}
-	//
-	//	return m.RegisterServiceClient(interfacePtr, sonm.NewDWHClient(conn))
-	//}
+func (m *GRPCRegistry) RegisterService(interfacePtr interface{}) {
+	interfaceType := reflect.TypeOf(interfacePtr).Elem()
+	serviceName := strings.Replace(interfaceType.Name(), "Client", "Server", 1)
+	_, ok := m.serviceInterfaces[serviceName]
+	if ok {
+		panic(fmt.Sprintf("service %s has already been registered", serviceName))
+	}
+
+	m.serviceInterfaces[serviceName] = interfacePtr
 }
 
-func (m *GRPCRegistry) RegisterServiceClient(interfacePtr, concretePtr interface{}) error {
+func (m *GRPCRegistry) GetOrCreateService(serviceName, target string) (*Service, error) {
+	interfacePtr, ok := m.serviceInterfaces[serviceName]
+	if !ok {
+		return nil, fmt.Errorf("service %s was not registered", serviceName)
+	}
+
+	conn, err := m.connections.GetOrCreateConnection(target)
+	if err != nil {
+		return nil, err
+	}
+
+	service, ok := m.services[serviceName]
+	if !ok {
+		return m.CreateService(interfacePtr, sonm.NewDWHClient(conn))
+	}
+
+	return service, nil
+}
+
+func (m *GRPCRegistry) CreateService(interfacePtr, concretePtr interface{}) (*Service, error) {
 	interfaceType := reflect.TypeOf(interfacePtr).Elem()
 	serviceName := strings.Replace(interfaceType.Name(), "Client", "Server", 1)
 
 	service, ok := m.services[serviceName]
 	if ok {
-		return fmt.Errorf("service %s has already been registered", serviceName)
+		return nil, fmt.Errorf("service %s has already been registered", serviceName)
 	}
 
 	fullServiceName := "/" + strings.Replace(interfaceType.String(), "Client", "", 1)
@@ -139,14 +107,13 @@ func (m *GRPCRegistry) RegisterServiceClient(interfacePtr, concretePtr interface
 
 	concrete := reflect.ValueOf(concretePtr)
 	if !concrete.Type().Implements(interfaceType) {
-		return fmt.Errorf("concrete object of type %s must implement the provided interface %s", concrete.Type().Name(), interfaceType.Name())
+		return nil, fmt.Errorf("concrete object of type %s must implement the provided interface %s", concrete.Type().Name(), interfaceType.Name())
 	}
 
 	for i := 0; i < interfaceType.NumMethod(); i++ {
 		method := interfaceType.Method(i)
-		fmt.Printf("r M, %d %v\n", i, method)
 
-		if method.Type.NumIn() != 2 {
+		if method.Type.NumIn() != 3 {
 			continue
 		}
 
@@ -157,7 +124,7 @@ func (m *GRPCRegistry) RegisterServiceClient(interfacePtr, concretePtr interface
 		}
 
 		if method.Type.NumOut() != 2 {
-			return fmt.Errorf("failed not register method %s for service %s - invalid number of returned arguments", method.Name, serviceName)
+			return nil, fmt.Errorf("failed not register method %s for service %s - invalid number of returned arguments", method.Name, serviceName)
 		}
 
 		service.Methods[method.Name] = &Method{
@@ -170,14 +137,118 @@ func (m *GRPCRegistry) RegisterServiceClient(interfacePtr, concretePtr interface
 
 	m.services[serviceName] = service
 
-	return nil
-}
-
-func (m *GRPCRegistry) Services() map[string]*Service {
-	return m.services
+	return service, nil
 }
 
 type Manager struct {
+	registry *GRPCRegistry
+	runtime  []func(ctx context.Context) error
+	log      *zap.SugaredLogger
+}
+
+func NewManager(registry *GRPCRegistry, log *zap.Logger) *Manager {
+	return &Manager{
+		registry: registry,
+		log:      log.Sugar(),
+	}
+}
+
+func (m *Manager) AddCheck(check CheckConfig) error {
+	switch check.Type {
+	case "eth":
+		return nil
+	case "grpc":
+		parts := strings.Split(check.RequestURI, "/")
+		if len(parts) != 2 {
+			return fmt.Errorf("service URI %s must be in format {service}/{method}", check.RequestURI)
+		}
+
+		serviceName, methodName := parts[0], parts[1]
+
+		service, err := m.registry.GetOrCreateService(serviceName, check.Target)
+		if err != nil {
+			return fmt.Errorf("failed to obtain service: %s", err)
+		}
+
+		method, ok := service.Methods[methodName]
+		if !ok {
+			return fmt.Errorf("method %s for service %s not found", methodName, serviceName)
+		}
+
+		requestValue := reflect.New(method.MessageType)
+		if err := mapstructure.Decode(check.Args, requestValue.Interface()); err != nil {
+			return fmt.Errorf("failed to deserialize `args` into a request value: %s", err)
+		}
+
+		statusGauge := prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: check.Namespace,
+			Subsystem: check.Subsystem,
+			Name:      ToSnakeCase(methodName) + "_status",
+			Help:      fmt.Sprintf("%s %s %s status", check.Namespace, check.Subsystem, method.FullName),
+		})
+
+		responseTimesHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: check.Namespace,
+			Subsystem: check.Subsystem,
+			Name:      ToSnakeCase(methodName) + "_response_times",
+			Help:      fmt.Sprintf("%s %s %s response times", check.Namespace, check.Subsystem, method.FullName),
+		})
+
+		prometheus.MustRegister(statusGauge, responseTimesHistogram)
+
+		m.runtime = append(m.runtime, func(ctx context.Context) error {
+			callParam := []reflect.Value{
+				reflect.ValueOf(ctx),
+				reflect.ValueOf(reflect.Indirect(requestValue).Interface()),
+			}
+
+			timer := time.NewTicker(check.Interval)
+			defer timer.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-timer.C:
+					m.log.Infof("collecting %s", method.FullName)
+
+					t := prometheus.NewTimer(responseTimesHistogram)
+
+					resp := method.MethodValue.Call(callParam)
+					if len(resp) != 2 {
+						return fmt.Errorf("invalid number of returned arguments: %d", len(resp))
+					}
+
+					err := resp[1].Interface().(error)
+					if err != nil {
+						statusGauge.Set(0.0)
+						m.log.Warnf("failed to collect %s: %s", method.FullName, err)
+					} else {
+						statusGauge.Set(1.0)
+					}
+
+					t.ObserveDuration()
+				}
+			}
+		})
+
+		return nil
+	default:
+		return fmt.Errorf("unknown check type: %s", check.Type)
+	}
+}
+
+func (m *Manager) Run(ctx context.Context) error {
+	wg, ctx := errgroup.WithContext(ctx)
+
+	for id := range m.runtime {
+		fn := m.runtime[id]
+		wg.Go(func() error {
+			return fn(ctx)
+		})
+	}
+
+	return wg.Wait()
 }
 
 func main() {
@@ -190,9 +261,8 @@ func run() error {
 		return fmt.Errorf("failed to load config file: %s", err)
 	}
 
-	//log := logging.BuildLogger(cfg.Logging.LogLevel()).Sugar()
-
-	wg, ctx := errgroup.WithContext(context.Background())
+	ctx := context.Background()
+	log := logging.BuildLogger(cfg.Logging.LogLevel())
 
 	registry, err := NewGRPCRegistry(ctx, cfg.Account)
 	if err != nil {
@@ -201,59 +271,13 @@ func run() error {
 
 	registry.RegisterService((*sonm.DWHClient)(nil))
 
-	// Sanitize.
-	for id, c := range cfg.Checks {
-		switch c.Type {
-		case "eth":
-		case "grpc":
-			check := c
+	manager := NewManager(registry, log)
 
-			parts := strings.Split(check.RequestURI, "/")
-			if len(parts) != 2 {
-				return fmt.Errorf("service URI %s must be in format {service}/{method}", check.RequestURI)
-			}
-
-			serviceName, methodName := parts[0], parts[1]
-
-			service, err := registry.GetOrCreateService(serviceName, check.Target)
-			if err != nil {
-				return fmt.Errorf("failed to obtain service: %s", err)
-			}
-
-			fmt.Printf("%v\n", service.Methods)
-			method, ok := service.Methods[methodName]
-			if !ok {
-				return fmt.Errorf("method %s for service %s not found", methodName, serviceName)
-			}
-
-			requestValue := reflect.New(method.MessageType)
-			if err := mapstructure.Decode(check.Args, requestValue.Interface()); err != nil {
-				return fmt.Errorf("failed to deserialize `args` into a request value: %s", err)
-			}
-
-			callParam := []reflect.Value{
-				reflect.ValueOf(ctx),
-				reflect.ValueOf(requestValue),
-			}
-
-			wg.Go(func() error {
-				resp := method.MethodValue.Call(callParam)
-				if len(resp) != 2 {
-				}
-
-				fmt.Printf("!!! %v+\n", resp)
-				// Get service from registry by name.
-				// Deserialize args into a type.
-				// Create closure.
-				//cfg.Checks[id]
-				return nil
-			})
-		default:
-			return fmt.Errorf("unknown check %d type: %s", id, c.Type)
-		}
+	for _, check := range cfg.Checks {
+		manager.AddCheck(check)
 	}
 
-	return wg.Wait()
+	return manager.Run(ctx)
 }
 
 //import (
@@ -423,7 +447,7 @@ func run() error {
 //func (m *Collector) watchETHOrderInfo(ctx context.Context) {
 //	t := prometheus.NewTimer(m.ethMetrics.getOrderInfoHistogram)
 //	defer t.ObserveDuration()
-//
+
 //	_, err := m.market.GetOrderInfo(ctx, big.NewInt(OrderId))
 //	if err != nil {
 //		m.ethMetrics.getOrderInfoOk.Set(0)

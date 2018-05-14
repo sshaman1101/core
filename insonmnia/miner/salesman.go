@@ -249,7 +249,7 @@ func (m *Salesman) Deal(dealID *sonm.BigInt) (*sonm.Deal, error) {
 
 	deal, ok := m.deals[id]
 	if !ok {
-		return nil, fmt.Errorf(" deal not found by %s", id)
+		return nil, fmt.Errorf(" deal not found by id %s", id)
 	}
 	return deal, nil
 }

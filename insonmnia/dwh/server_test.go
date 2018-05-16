@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	testDBPath        = "test_dwh.db"
-	testMonitorDBPath = "test_monitor_dwh.db"
+	testDBPath               = "test_dwh.db"
+	testMonitorDBPath        = "test_monitor_dwh.db"
+	testNumCurrentBenchmarks = 12
 )
 
 var (
@@ -68,7 +69,7 @@ func getTestDWH(dbPath string) (*DWH, error) {
 		cfg:           cfg,
 		logger:        log.GetLogger(ctx),
 		commands:      sqliteCommands,
-		numBenchmarks: bch.NumCurrentBenchmarks,
+		numBenchmarks: testNumCurrentBenchmarks,
 	}
 
 	return w, setupTestDB(w)

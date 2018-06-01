@@ -104,6 +104,16 @@ type OracleAPI interface {
 	GetCurrentPrice(ctx context.Context) (*big.Int, error)
 }
 
+// SimpleGatekeeper bind
+type SimpleGatekeeperAPI interface {
+	// PayIn
+	PayIn(ctx context.Context, key *ecdsa.PrivateKey, value *big.Int) (*types.Transaction, error)
+
+	Payout(ctx context.Context, key *ecdsa.PrivateKey, to common.Address, txNumber *big.Int, value *big.Int) (*types.Transaction, error)
+
+	Kill(ctx context.Context, key *ecdsa.PrivateKey) (*types.Transaction, error)
+}
+
 type BasicAPI struct {
 	market          MarketAPI
 	liveToken       TokenAPI
@@ -1138,4 +1148,43 @@ func (api *OracleUSDAPI) SetCurrentPrice(ctx context.Context, key *ecdsa.Private
 
 func (api *OracleUSDAPI) GetCurrentPrice(ctx context.Context) (*big.Int, error) {
 	return api.oracleContract.GetCurrentPrice(getCallOptions(ctx))
+}
+
+type BasicSimpleGatekeeperAPI struct {
+	client   CustomEthereumClient
+	contract *marketAPI.SimpleGatekeeper
+	opts     *chainOpts
+}
+
+func NewSimpleGatekeeperAPI(address common.Address, opts *chainOpts) (*BasicSimpleGatekeeperAPI, error) {
+	client, err := opts.getClient()
+	if err != nil {
+		return nil, err
+	}
+
+	contract, err := marketAPI.NewSimpleGatekeeper(address, client)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BasicSimpleGatekeeperAPI{
+		client:   client,
+		contract: contract,
+		opts:     opts,
+	}, nil
+}
+
+func (api *BasicSimpleGatekeeperAPI) PayIn(ctx context.Context, key *ecdsa.PrivateKey, value *big.Int) (*types.Transaction, error) {
+	opts := getTxOpts(ctx, key, defaultGasLimitForSidechain, api.opts.gasPrice)
+	return api.contract.PayIn(opts, value)
+}
+
+func (api *BasicSimpleGatekeeperAPI) Payout(ctx context.Context, key *ecdsa.PrivateKey, to common.Address, txNumber *big.Int, value *big.Int) (*types.Transaction, error) {
+	opts := getTxOpts(ctx, key, defaultGasLimitForSidechain, api.opts.gasPrice)
+	return api.contract.Payout(opts, to, value, txNumber)
+}
+
+func (api *BasicSimpleGatekeeperAPI) Kill(ctx context.Context, key *ecdsa.PrivateKey) (*types.Transaction, error) {
+	opts := getTxOpts(ctx, key, defaultGasLimitForSidechain, api.opts.gasPrice)
+	return api.contract.Kill(opts)
 }

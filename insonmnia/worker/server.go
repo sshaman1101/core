@@ -551,6 +551,11 @@ func (m *Worker) StartTask(ctx context.Context, request *pb.StartTaskRequest) (*
 		return nil, err
 	}
 
+	network, err := m.salesman.Network(ask.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	publicKey, err := parsePublicKey(spec.Container.SshKey)
 	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "invalid public key provided %v", err)
@@ -621,6 +626,7 @@ func (m *Worker) StartTask(ctx context.Context, request *pb.StartTaskRequest) (*
 		Env:           spec.Container.Env,
 		volumes:       spec.Container.Volumes,
 		mounts:        mounts,
+		network:       network,
 		networks:      networks,
 	}
 
@@ -1112,7 +1118,7 @@ func (m *Worker) AskPlans(ctx context.Context, _ *pb.Empty) (*pb.AskPlansReply, 
 }
 
 func (m *Worker) CreateAskPlan(ctx context.Context, request *pb.AskPlan) (*pb.ID, error) {
-	log.G(m.ctx).Info("handling CreateAskPlan request", zap.Any("request", request))
+	log.G(m.ctx).Info("handling CreateAskPlan request", zap.Any("request", *request))
 	if len(request.GetID()) != 0 || !request.GetOrderID().IsZero() || !request.GetDealID().IsZero() {
 		return nil, errors.New("creating ask plans with predefined id, order_id or deal_id are not supported")
 	}

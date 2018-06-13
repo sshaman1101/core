@@ -182,11 +182,11 @@ contract Market is Ownable {
         uint64[] _benchmarks
     ) public returns (uint){
 
-        require(_netflags.length <= netflagsQuantity);
-        require(_benchmarks.length <= benchmarksQuantity);
+        require(_netflags.length <= netflagsQuantity, 'netflags.len > netflagsQuantity');
+        require(_benchmarks.length <= benchmarksQuantity, 'benchmarks.len > benchmarksQuantity');
 
         for(uint i = 0; i < _benchmarks.length; i++){
-            require(_benchmarks[i] < maxBenchmarkValue);
+            require(_benchmarks[i] < maxBenchmarkValue, 'some of benchmarks > 2^63');
         }
 
         uint lockedSum;
@@ -200,7 +200,7 @@ contract Market is Ownable {
                 lockedSum = CalculatePayment(_price, 1 days);
             }
             // this line contains err.
-            require(token.transferFrom(msg.sender, this, lockedSum));
+            require(token.transferFrom(msg.sender, this, lockedSum), 'can not transfer first tranche');
         }
 
         ordersAmount = ordersAmount.add(1);
@@ -227,12 +227,10 @@ contract Market is Ownable {
     }
 
     function CancelOrder(uint orderID) public returns (bool){
-        require(orderID <= ordersAmount);
-        require(orders[orderID].orderStatus == OrderStatus.ORDER_ACTIVE);
-        require(orders[orderID].author == msg.sender);
-
-
-        require(token.transfer(msg.sender, orders[orderID].frozenSum));
+        require(orderID <= ordersAmount, 'order does not exists');
+        require(orders[orderID].orderStatus == OrderStatus.ORDER_ACTIVE, 'order is already canceled');
+        require(orders[orderID].author == msg.sender, 'msg.sender != order.author');
+        require(token.transfer(msg.sender, orders[orderID].frozenSum), 'can not return funds');
         orders[orderID].orderStatus = OrderStatus.ORDER_INACTIVE;
 
         emit OrderUpdated(orderID);
@@ -242,13 +240,13 @@ contract Market is Ownable {
 
     function QuickBuy(uint askID, uint buyoutDuration) public {
         Order memory ask = orders[askID];
-        require(ask.orderType == OrderType.ORDER_ASK);
-        require(ask.orderStatus == OrderStatus.ORDER_ACTIVE);
+        require(ask.orderType == OrderType.ORDER_ASK, 'order should be ASK');
+        require(ask.orderStatus == OrderStatus.ORDER_ACTIVE, 'order is not active');
 
-        require(ask.duration >= buyoutDuration);
-        require(pr.CheckProfileLevel(msg.sender, uint(ask.identityLevel)));
-        require(bl.Check(msg.sender, GetMaster(ask.author)) == false && bl.Check(ask.author, msg.sender) == false);
-        require(bl.Check(ask.blacklist, msg.sender) == false);
+        require(ask.duration >= buyoutDuration, 'buyoutDuration should be less than order duration');
+        require(pr.CheckProfileLevel(msg.sender, uint(ask.identityLevel)), 'your level is less than required');
+        require(bl.Check(msg.sender, GetMaster(ask.author)) == false && bl.Check(ask.author, msg.sender) == false, 'you or order author is blacklisted');
+        require(bl.Check(ask.blacklist, msg.sender) == false, 'you are blacklisted');
 
         PlaceOrder(
             OrderType.ORDER_BID,
@@ -271,10 +269,10 @@ contract Market is Ownable {
         Order memory ask = orders[_askID];
         Order memory bid = orders[_bidID];
 
-        require(ask.orderStatus == OrderStatus.ORDER_ACTIVE && bid.orderStatus == OrderStatus.ORDER_ACTIVE);
-        require((ask.counterparty == 0x0 || ask.counterparty == GetMaster(bid.author)) && (bid.counterparty == 0x0 || bid.counterparty == GetMaster(ask.author)));
-        require(ask.orderType == OrderType.ORDER_ASK);
-        require(bid.orderType == OrderType.ORDER_BID);
+        require(ask.orderStatus == OrderStatus.ORDER_ACTIVE && bid.orderStatus == OrderStatus.ORDER_ACTIVE, 'one of orders is not active');
+        require((ask.counterparty == 0x0 || ask.counterparty == GetMaster(bid.author)) && (bid.counterparty == 0x0 || bid.counterparty == GetMaster(ask.author)), 'counterparty mismatch');
+        require(ask.orderType == OrderType.ORDER_ASK, 'first order should be ask');
+        require(bid.orderType == OrderType.ORDER_BID, 'second order should be bid');
         require(
             bl.Check(bid.blacklist, GetMaster(ask.author)) == false
             && bl.Check(bid.blacklist, ask.author) == false
@@ -282,12 +280,12 @@ contract Market is Ownable {
             && bl.Check(bid.author, ask.author) == false
             && bl.Check(ask.blacklist, bid.author) == false
             && bl.Check(GetMaster(ask.author), bid.author) == false
-            && bl.Check(ask.author, bid.author) == false);
-        require(ask.price <= bid.price);
-        require(ask.duration >= bid.duration);
+            && bl.Check(ask.author, bid.author) == false, 'someone is blacklisted');
+        require(ask.price <= bid.price, 'bid price is less than required');
+        require(ask.duration >= bid.duration, 'ask duration is less than required');
         // profile level check
-        require(pr.CheckProfileLevel(bid.author, uint(ask.identityLevel)));
-        require(pr.CheckProfileLevel(ask.author, uint(bid.identityLevel)));
+        require(pr.CheckProfileLevel(bid.author, uint(ask.identityLevel)), 'ask author level is too low');
+        require(pr.CheckProfileLevel(ask.author, uint(bid.identityLevel)), 'bid author level is too low');
 
         if (ask.netflags.length < netflagsQuantity){
             ask.netflags = ResizeNetflags(ask.netflags);
@@ -300,7 +298,7 @@ contract Market is Ownable {
         for (uint i = 0; i < ask.netflags.length; i++) {
             // implementation: when bid contains requirement, ask necessary needs to have this
             // if ask have this one - pass
-            require(!bid.netflags[i] || ask.netflags[i]);
+            require(!bid.netflags[i] || ask.netflags[i], 'netflags doesnt match');
         }
 
         if(ask.benchmarks.length < benchmarksQuantity){
@@ -312,7 +310,7 @@ contract Market is Ownable {
         }
 
         for (i = 0; i < ask.benchmarks.length; i++) {
-            require(ask.benchmarks[i] >= bid.benchmarks[i]);
+            require(ask.benchmarks[i] >= bid.benchmarks[i], 'benchmarks doesnt match');
         }
 
         dealAmount = dealAmount.add(1);
@@ -340,12 +338,12 @@ contract Market is Ownable {
     }
 
     function CloseDeal(uint dealID, BlacklistPerson blacklisted) public returns (bool){
-        require((deals[dealID].status == DealStatus.STATUS_ACCEPTED));
-        require(msg.sender == deals[dealID].supplierID || msg.sender == deals[dealID].consumerID || msg.sender == deals[dealID].masterID);
+        require((deals[dealID].status == DealStatus.STATUS_ACCEPTED), 'deal is already closed or doesnt exists');
+        require(msg.sender == deals[dealID].supplierID || msg.sender == deals[dealID].consumerID || msg.sender == deals[dealID].masterID, 'you have no rights to close this deal');
 
         if (block.timestamp <= deals[dealID].startTime.add(deals[dealID].duration)) {
             // after endTime
-            require(deals[dealID].consumerID == msg.sender);
+            require(deals[dealID].consumerID == msg.sender, 'only consumer can close forward deal before endTime');
         }
 
         AddToBlacklist(dealID, blacklisted);
@@ -353,14 +351,14 @@ contract Market is Ownable {
         InternalCloseDeal(dealID);
 
         if (deals[dealID].blockedBalance > 0) {
-            require(token.transfer(deals[dealID].consumerID, deals[dealID].blockedBalance));
+            require(token.transfer(deals[dealID].consumerID, deals[dealID].blockedBalance), 'can not refund least funds');
         }
         return true;
     }
 
     function Bill(uint dealID) public returns (bool){
-        require(deals[dealID].status == DealStatus.STATUS_ACCEPTED);
-        require(msg.sender == deals[dealID].supplierID || msg.sender == deals[dealID].consumerID || msg.sender == deals[dealID].masterID);
+        require(deals[dealID].status == DealStatus.STATUS_ACCEPTED, 'deal is already closed or doesnt exists');
+        require(msg.sender == deals[dealID].supplierID || msg.sender == deals[dealID].consumerID || msg.sender == deals[dealID].masterID, 'you have no rights to bill this deal');
         Deal memory deal = deals[dealID];
 
         uint paidAmount;
@@ -376,19 +374,19 @@ contract Market is Ownable {
 
         if (paidAmount > deal.blockedBalance) {
             if (token.balanceOf(deal.consumerID) >= paidAmount.sub(deal.blockedBalance)) {
-                require(token.transferFrom(deal.consumerID, this, paidAmount.sub(deal.blockedBalance)));
+                require(token.transferFrom(deal.consumerID, this, paidAmount.sub(deal.blockedBalance)), 'can not transferFrom needed tranche for spent time');
                 deals[dealID].blockedBalance = deals[dealID].blockedBalance.add(paidAmount.sub(deal.blockedBalance));
             } else {
                 emit Billed(dealID, deals[dealID].blockedBalance);
                 InternalCloseDeal(dealID);
-                require(token.transfer(deal.masterID, deal.blockedBalance));
+                require(token.transfer(deal.masterID, deal.blockedBalance), 'can not tranfer least funds to master');
                 deals[dealID].lastBillTS = block.timestamp;
                 deals[dealID].totalPayout = deals[dealID].totalPayout.add(deal.blockedBalance);
                 deals[dealID].blockedBalance = 0;
                 return true;
             }
         }
-        require(token.transfer(deal.masterID, paidAmount));
+        require(token.transfer(deal.masterID, paidAmount), 'can not transfer funds that should paid');
         deals[dealID].blockedBalance = deals[dealID].blockedBalance.sub(paidAmount);
         deals[dealID].totalPayout = deals[dealID].totalPayout.add(paidAmount);
         deals[dealID].lastBillTS = block.timestamp;
@@ -416,12 +414,12 @@ contract Market is Ownable {
             uint nextPeriodSum = CalculatePayment(deal.price, nextPeriod).sub(deals[dealID].blockedBalance);
 
             if (token.balanceOf(deal.consumerID) >= nextPeriodSum) {
-                require(token.transferFrom(deal.consumerID, this, nextPeriodSum));
+                require(token.transferFrom(deal.consumerID, this, nextPeriodSum) , 'can not transferFrom funds for next period');
                 deals[dealID].blockedBalance = deals[dealID].blockedBalance.add(nextPeriodSum);
             } else {
                 emit Billed(dealID, deal.blockedBalance);
                 InternalCloseDeal(dealID);
-                require(token.transfer(deal.masterID, deal.blockedBalance));
+                require(token.transfer(deal.masterID, deal.blockedBalance), 'can not transfer least funds for master');
                 deals[dealID].blockedBalance = 0;
                 return true;
             }
@@ -430,11 +428,11 @@ contract Market is Ownable {
     }
 
     function CreateChangeRequest(uint dealID, uint newPrice, uint newDuration) public returns (uint changeRequestID) {
-        require(msg.sender == deals[dealID].consumerID || msg.sender == deals[dealID].masterID || msg.sender == deals[dealID].supplierID);
-        require(deals[dealID].status == DealStatus.STATUS_ACCEPTED);
+        require(msg.sender == deals[dealID].consumerID || msg.sender == deals[dealID].masterID || msg.sender == deals[dealID].supplierID, 'you have no rights to create change requests for this deal');
+        require(deals[dealID].status == DealStatus.STATUS_ACCEPTED, 'deal is closed or doesnt exists');
 
         if (IsSpot(dealID)) {
-            require(newDuration == 0);
+            require(newDuration == 0, 'duration != 0, deal is spot');
         }
 
         requestsAmount = requestsAmount.add(1);
@@ -515,8 +513,8 @@ contract Market is Ownable {
 
     function CancelChangeRequest(uint changeRequestID) public returns (bool) {
         ChangeRequest memory request = requests[changeRequestID];
-        require(msg.sender == deals[request.dealID].supplierID || msg.sender == deals[request.dealID].masterID || msg.sender == deals[request.dealID].consumerID);
-        require(request.status != RequestStatus.REQUEST_ACCEPTED);
+        require(msg.sender == deals[request.dealID].supplierID || msg.sender == deals[request.dealID].masterID || msg.sender == deals[request.dealID].consumerID, 'you have no rights to cancel this cr');
+        require(request.status != RequestStatus.REQUEST_ACCEPTED, 'request already canceled');
 
         if (request.requestType == OrderType.ORDER_ASK) {
             if(msg.sender == deals[request.dealID].consumerID){
@@ -546,16 +544,16 @@ contract Market is Ownable {
     // Master-worker functions
 
     function RegisterWorker(address _master) public returns (bool) {
-        require(GetMaster(msg.sender) == msg.sender);
-        require(isMaster[msg.sender] == false);
-        require(GetMaster(_master) == _master);
+        require(GetMaster(msg.sender) == msg.sender, 'you already have master');
+        require(isMaster[msg.sender] == false, 'you shouldnt have any workets');
+        require(GetMaster(_master) == _master, 'your potential master has his own master');
         masterRequest[_master][msg.sender] = true;
         emit WorkerAnnounced(msg.sender, _master);
         return true;
     }
 
     function ConfirmWorker(address _worker) public returns (bool) {
-        require(masterRequest[msg.sender][_worker] == true);
+        require(masterRequest[msg.sender][_worker] == true, 'no request sent');
         masterOf[_worker] = msg.sender;
         isMaster[msg.sender] = true;
         delete masterRequest[msg.sender][_worker];
@@ -564,7 +562,7 @@ contract Market is Ownable {
     }
 
     function RemoveWorker(address _worker, address _master) public returns (bool) {
-        require(GetMaster(_worker) == _master && (msg.sender == _worker || msg.sender == _master));
+        require(GetMaster(_worker) == _master && (msg.sender == _worker || msg.sender == _master), 'you have no rights to remove worker');
         delete masterOf[_worker];
         emit WorkerRemoved(_worker, _master);
         return true;
@@ -720,7 +718,7 @@ contract Market is Ownable {
 
     function AddToBlacklist(uint dealID, BlacklistPerson role) internal {
         // only consumer can blacklist
-        require(msg.sender == deals[dealID].consumerID || role == BlacklistPerson.BLACKLIST_NOBODY);
+        require(msg.sender == deals[dealID].consumerID || role == BlacklistPerson.BLACKLIST_NOBODY, 'only consumer can blacklist');
         if (role == BlacklistPerson.BLACKLIST_WORKER){
             bl.Add(deals[dealID].consumerID, deals[dealID].supplierID);
         } else if (role == BlacklistPerson.BLACKLIST_MASTER)
@@ -731,8 +729,8 @@ contract Market is Ownable {
         if (deals[dealID].status == DealStatus.STATUS_CLOSED){
             return;
         } else {
-            require((deals[dealID].status == DealStatus.STATUS_ACCEPTED));
-            require(msg.sender == deals[dealID].consumerID || msg.sender == deals[dealID].supplierID || msg.sender == deals[dealID].masterID);
+            require((deals[dealID].status == DealStatus.STATUS_ACCEPTED), 'deal is already closed or doesnt exists');
+            require(msg.sender == deals[dealID].consumerID || msg.sender == deals[dealID].supplierID || msg.sender == deals[dealID].masterID, 'you have no rights to close this deal');
             deals[dealID].status = DealStatus.STATUS_CLOSED;
             deals[dealID].endTime = block.timestamp;
             emit DealUpdated(dealID);
@@ -767,20 +765,20 @@ contract Market is Ownable {
     }
 
     function SetOracleAddress (address _newOracle) onlyOwner public returns (bool) {
-        require(OracleUSD(_newOracle).getCurrentPrice() != 0);
+        require(OracleUSD(_newOracle).getCurrentPrice() != 0, 'oracle price is 0');
         oracle = OracleUSD(_newOracle);
         return true;
     }
 
     function SetBenchmarksQuantity(uint _newQuantity) onlyOwner public returns (bool) {
-        require(_newQuantity > benchmarksQuantity);
+        require(_newQuantity > benchmarksQuantity, 'new quantity is less than current');
         emit NumBenchmarksUpdated(_newQuantity);
         benchmarksQuantity = _newQuantity;
         return true;
     }
 
     function SetNetflagsQuantity(uint _newQuantity) onlyOwner public returns (bool) {
-        require(_newQuantity > netflagsQuantity);
+        require(_newQuantity > netflagsQuantity, 'new quantity is less than current');
         emit NumNetflagsUpdated(_newQuantity);
         netflagsQuantity = _newQuantity;
         return true;

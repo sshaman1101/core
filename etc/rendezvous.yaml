@@ -1,3 +1,5 @@
+# Note that for the entire cluster it is meant that all of them will listen
+# the same port.
 endpoint: "[::]:14099"
 
 logging:

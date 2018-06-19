@@ -40,8 +40,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sonm-io/core/insonmnia/auth"
+	"github.com/sonm-io/core/insonmnia/npp/cluster"
 	"github.com/sonm-io/core/insonmnia/npp/nppc"
 	"github.com/sonm-io/core/proto"
+	"github.com/sonm-io/core/util/netutil"
 	"github.com/sonm-io/core/util/xgrpc"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
@@ -113,8 +115,11 @@ type Server struct {
 	server   *grpc.Server
 	resolver resolver
 
-	mu sync.Mutex
-	rv map[nppc.ResourceID]*meeting
+	mu        sync.Mutex
+	rv        map[nppc.ResourceID]*meeting
+	continuum *cluster.Continuum
+	cluster   *memberlist.Memberlist
+	port      netutil.Port
 }
 
 // NewServer constructs a new rendezvous server using specified config and
@@ -130,7 +135,12 @@ func NewServer(cfg ServerConfig, options ...Option) (*Server, error) {
 		option(opts)
 	}
 
-	server := &Server{
+	port, err := netutil.ExtractPort(cfg.Addr.String())
+	if err != nil {
+		return nil, err
+	}
+
+	m := &Server{
 		cfg: cfg,
 		log: opts.log,
 		server: xgrpc.NewServer(
@@ -139,19 +149,52 @@ func NewServer(cfg ServerConfig, options ...Option) (*Server, error) {
 			xgrpc.DefaultTraceInterceptor(),
 			xgrpc.VerifyInterceptor(),
 		),
-		resolver: newExternalResolver(""),
-		rv:       map[nppc.ResourceID]*meeting{},
+		resolver:  newExternalResolver(""),
+		rv:        map[nppc.ResourceID]*meeting{},
+		continuum: cluster.NewContinuum(),
+		port:      port,
 	}
 
-	server.log.Debug("configured authentication settings",
-		zap.String("addr", crypto.PubkeyToAddress(cfg.PrivateKey.PublicKey).Hex()),
-		zap.Any("credentials", opts.credentials.Info()),
-	)
+	if m.cluster, err = cluster.NewCluster(cfg.Cluster, m, m.log); err != nil {
+		return nil, err
+	}
 
-	sonm.RegisterRendezvousServer(server.server, server)
-	server.log.Debug("registered gRPC server")
+	m.log.Debug("configured authentication settings", zap.Any("credentials", opts.credentials.Info()))
 
-	return server, nil
+	sonm.RegisterRendezvousServer(m.server, m)
+	m.log.Debug("registered gRPC server")
+
+	return m, nil
+}
+
+func (m *Server) Discover(ctx context.Context, in *sonm.HandshakeRequest) (*sonm.DiscoverResponse, error) {
+	return nil, nil
+}
+
+func (m *Server) NotifyJoin(node *memberlist.Node) {
+	m.log.Info("node has joined to the cluster", zap.String("node_name", node.Name),
+		zap.String("node_addr", node.Address()))
+
+	m.continuum.Add(m.formatEndpoint(node.Addr), 1)
+
+	// clean up discarded addresses
+}
+
+func (m *Server) NotifyLeave(node *memberlist.Node) {
+	m.log.Info("node has left from the cluster", zap.String("node_name", node.Name),
+		zap.String("node_addr", node.Address()))
+
+	m.continuum.Remove(m.formatEndpoint(node.Addr))
+
+	// clean up discarded addresses
+}
+
+func (m *Server) NotifyUpdate(node *memberlist.Node) {
+	m.log.Info("node has been updated", zap.String("node_name", node.Name))
+}
+
+func (m *Server) formatEndpoint(ip net.IP) string {
+	return fmt.Sprintf("%s:%d", ip.String(), m.port)
 }
 
 func (m *Server) Resolve(ctx context.Context, request *sonm.ConnectRequest) (*sonm.RendezvousReply, error) {

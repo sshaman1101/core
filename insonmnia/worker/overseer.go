@@ -79,6 +79,14 @@ func (d *Description) Networks() []structs.Network {
 	return d.networks
 }
 
+func (d *Description) QuotaID() string {
+	return d.DealId
+}
+
+func (d *Description) QuotaInBytes() uint64 {
+	return d.Resources.GetStorage().GetSize().GetBytes()
+}
+
 func (d *Description) FormatEnv() []string {
 	vars := make([]string, 0, len(d.Env))
 	for k, v := range d.Env {

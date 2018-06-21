@@ -32,5 +32,5 @@ type CurBTCWatcher interface {
 
 type BudgetWatcher interface {
 	Watcher
-	GetBalance() (*big.Int)
+	GetBalance() *big.Int
 }

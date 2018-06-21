@@ -39,8 +39,8 @@ type ReportedHashrate struct {
 }
 
 type RHData struct {
-	Worker   string `json:"worker"`
-	Hashrate float64    `json:"hashrate"`
+	Worker   string  `json:"worker"`
+	Hashrate float64 `json:"hashrate"`
 }
 
 type nanopoolWatcher struct {

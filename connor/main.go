@@ -4,9 +4,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
-	"log"
-	"os"
-	"time"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sonm-io/core/connor/config"
 	"github.com/sonm-io/core/connor/modules"
@@ -16,6 +13,9 @@ import (
 	"github.com/sonm-io/core/util/xgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"log"
+	"os"
+	"time"
 )
 
 const configPath = "insonmnia/arbBot/bot.yaml"
@@ -117,7 +117,7 @@ func main() {
 	}
 }
 
-func GetIdentityLvl(cfg *config.Config) (sonm.IdentityLevel) {
+func GetIdentityLvl(cfg *config.Config) sonm.IdentityLevel {
 	switch cfg.OtherParameters.IdentityForBid {
 	case 1:
 		return sonm.IdentityLevel_ANONYMOUS

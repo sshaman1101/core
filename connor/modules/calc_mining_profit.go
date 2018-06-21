@@ -2,11 +2,10 @@ package modules
 
 import (
 	"fmt"
-	"log"
-	"time"
-
 	rec "github.com/sonm-io/core/connor/records"
 	"github.com/sonm-io/core/connor/watchers"
+	"log"
+	"time"
 )
 
 const (
@@ -77,7 +76,7 @@ func CollectTokensMiningProfit(t watchers.TokenWatcher) ([]*TokenMainData, error
 	}
 	return tokensForCalc, nil
 }
-func calculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) (float64) {
+func calculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) float64 {
 	currentHashingPower := hashesPerSecond / div
 	miningShare := currentHashingPower / (netHashesPerSecond + currentHashingPower)
 

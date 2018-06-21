@@ -8,6 +8,7 @@ func LimitChargeSNM(balance *big.Int, partCharge float64) *big.Int {
 	limitChargeSNM = limitChargeSNM.Mul(balance, big.NewInt(int64(partCharge*100)))
 	return limitChargeSNM
 }
+
 //converting snmBalance = > USD Balance
 func ConvertingToUSDBalance(balanceSide *big.Int, snmPrice float64) float64 {
 	bal := balanceSide.Mul(balanceSide, big.NewInt(int64(snmPrice*1e18)))

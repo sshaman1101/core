@@ -39,15 +39,15 @@ type otherParameters struct {
 }
 
 type Config struct {
-	Market         marketConfig        `required:"true" yaml:"market"`
-	PoolAddress    poolAddressesConfig `required:"false" yaml:"pool accounts"`
-	Distances      stepsConfig         `yaml:"stepForToken"`
-	ChargeInterval chargeOrdersConfig  `yaml:"chargeOrdersInterval"`
-	Sensitivity    sensitivityConfig   `yaml:"sensitivity"`
-	Images         imageConfig         `yaml:"images"`
+	Market          marketConfig        `required:"true" yaml:"market"`
+	PoolAddress     poolAddressesConfig `required:"false" yaml:"pool accounts"`
+	Distances       stepsConfig         `yaml:"stepForToken"`
+	ChargeInterval  chargeOrdersConfig  `yaml:"chargeOrdersInterval"`
+	Sensitivity     sensitivityConfig   `yaml:"sensitivity"`
+	Images          imageConfig         `yaml:"images"`
 	OtherParameters otherParameters     `yaml:"otherParameters"`
-	Eth            accounts.EthConfig  `yaml:"ethereum" required:"true"`
-	Log            logging.Config      `yaml:"log"`
+	Eth             accounts.EthConfig  `yaml:"ethereum" required:"true"`
+	Log             logging.Config      `yaml:"log"`
 }
 
 func NewConfig(path string) (*Config, error) {

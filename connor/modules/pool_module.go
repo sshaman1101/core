@@ -3,16 +3,15 @@ package modules
 import (
 	"context"
 	"fmt"
-
-	"github.com/sonm-io/core/proto"
 	"github.com/sonm-io/core/connor/config"
-	"math/big"
-	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/connor/records"
-	"strconv"
+	"github.com/sonm-io/core/connor/watchers"
+	"github.com/sonm-io/core/proto"
 	"log"
-	"time"
+	"math/big"
 	"os"
+	"strconv"
+	"time"
 )
 
 func DeployNewContainer(ctx context.Context, cfg *config.Config, deal *sonm.Deal, n sonm.TaskManagementClient, image string) (*sonm.StartTaskReply, error) {
@@ -49,7 +48,7 @@ func PoolTrack(ctx context.Context, pool watchers.PoolWatcher, avgpool watchers.
 	return nil
 }
 
-func SavePoolDataToDb(ctx context.Context, pool watchers.PoolWatcher, addr string) (error) {
+func SavePoolDataToDb(ctx context.Context, pool watchers.PoolWatcher, addr string) error {
 	pool.Update(ctx)
 	dataRH, err := pool.GetData(addr)
 	if err != nil {
@@ -75,7 +74,7 @@ func SavePoolDataToDb(ctx context.Context, pool watchers.PoolWatcher, addr strin
 	return nil
 }
 
-func UpdateRHPoolData(ctx context.Context, pool watchers.PoolWatcher, addr string) (error) {
+func UpdateRHPoolData(ctx context.Context, pool watchers.PoolWatcher, addr string) error {
 	pool.Update(ctx)
 	dataRH, err := pool.GetData(addr)
 	if err != nil {
@@ -90,7 +89,7 @@ func UpdateRHPoolData(ctx context.Context, pool watchers.PoolWatcher, addr strin
 	return nil
 }
 
-func UpdateAvgPoolData(ctx context.Context, pool watchers.PoolWatcher, addr string) (error) {
+func UpdateAvgPoolData(ctx context.Context, pool watchers.PoolWatcher, addr string) error {
 	pool.Update(ctx)
 	dataRH, err := pool.GetData(addr)
 	if err != nil {
@@ -105,7 +104,7 @@ func UpdateAvgPoolData(ctx context.Context, pool watchers.PoolWatcher, addr stri
 	return nil
 }
 
-func UpdatePoolData(ctx context.Context, pool watchers.PoolWatcher, addr string) (error) {
+func UpdatePoolData(ctx context.Context, pool watchers.PoolWatcher, addr string) error {
 	workers, err := records.GetWorkersFromDB()
 	if err != nil {
 		fmt.Printf("cannot get worker from pool DB")

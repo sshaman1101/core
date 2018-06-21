@@ -1,13 +1,13 @@
 package modules
 
 import (
-	"math/big"
+	"context"
+	"fmt"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/pkg/errors"
-	"fmt"
-	"context"
-	"github.com/sonm-io/core/proto"
 	"github.com/sonm-io/core/connor/records"
+	"github.com/sonm-io/core/proto"
+	"math/big"
 	"time"
 )
 
@@ -93,7 +93,7 @@ func GetBidBenchmarks(bidOrder *sonm.Order) (map[string]uint64, error) {
 	}
 	return bMap, nil
 }
-func FloatToBigInt(val float64) (*big.Int) {
+func FloatToBigInt(val float64) *big.Int {
 	price := val * params.Ether
 	return big.NewInt(int64(price))
 }

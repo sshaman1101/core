@@ -55,8 +55,7 @@ func ChargeOrdersOnce(ctx context.Context, marketClient sonm.MarketClient, token
 			StartTime:       time.Time{},
 			ButterflyEffect: 2,
 			ActualStep:      cfg.ChargeInterval.Start,
-		});
-			err != nil {
+		}); err != nil {
 			fmt.Printf("Cannot save order into DB %v\r\n", err)
 		}
 	}
@@ -178,7 +177,7 @@ func GetPriceForTokenPerSec(token watchers.TokenWatcher) (float64, float64, erro
 }
 
 // After charge orders
-func TradeObserve(ctx context.Context, ethAddr *sonm.EthAddress, dealCli sonm.DealManagementClient, pool watchers.PoolWatcher, token watchers.TokenWatcher, marketClient sonm.MarketClient, taskCli sonm.TaskManagementClient, cfg *config.Config, identityLvl sonm.IdentityLevel) (error) {
+func TradeObserve(ctx context.Context, ethAddr *sonm.EthAddress, dealCli sonm.DealManagementClient, pool watchers.PoolWatcher, token watchers.TokenWatcher, marketClient sonm.MarketClient, taskCli sonm.TaskManagementClient, cfg *config.Config, identityLvl sonm.IdentityLevel) error {
 	log.Printf("MODULE TRADE OBSERVE :: ")
 	err := SaveActiveDealsIntoDB(ctx, dealCli)
 	if err != nil {
@@ -381,23 +380,23 @@ func DealsProfitTracking(ctx context.Context, actualPrice *big.Int, dealClient s
 }
 
 // Get orders FROM DATABASE ==> if order's created time more cfg.Days -> order is cancelled ==> save to BD as "cancelled" (3).
-func CheckAndCancelOldOrders(ctx context.Context, m sonm.MarketClient, cfg *config.Config) () {
+func CheckAndCancelOldOrders(ctx context.Context, m sonm.MarketClient, cfg *config.Config) {
 	ordersDb, err := records.GetOrdersFromDB()
 	if err != nil {
 		fmt.Printf("Cannot get orders from DB %v\r\n", err)
 		os.Exit(1)
 	}
 	for _, o := range ordersDb {
-		subtract := time.Now().AddDate(0, 0, - o.StartTime.Day()).Day()
+		subtract := time.Now().AddDate(0, 0, -o.StartTime.Day()).Day()
 		if subtract >= cfg.Sensitivity.SensitivityForOrders && subtract > 30 {
 			fmt.Printf("Orders suspected of cancellation: : %v, passed time: %v\r\n", o.OrderID, subtract)
 			//TODO: change status to "Cancelled"
-			m.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(o.OrderID)),})
+			m.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(o.OrderID))})
 			records.UpdateOrderInDB(o.OrderID, int32(OrderStatusCancelled))
 		}
 	}
 }
 
-func GetChangeRequest(ctx context.Context, dealCli sonm.DealManagementClient) () {
+func GetChangeRequest(ctx context.Context, dealCli sonm.DealManagementClient) {
 	//TODO : Create check ChangeRequest status (by approve)
 }

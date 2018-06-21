@@ -1,8 +1,8 @@
 package watchers
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"sync"
 )
 
@@ -49,7 +49,7 @@ func (p *ConvertBtcWatcher) GetCurrencyData(id string) *CurrencyData {
 }
 
 func (p *ConvertBtcWatcher) Update(ctx context.Context) error {
-	for _, id := range p.id{
+	for _, id := range p.id {
 		forCur, err := p.getCurrencyData(id, p.url)
 		if err != nil {
 			return err

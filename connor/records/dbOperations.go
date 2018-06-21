@@ -304,12 +304,12 @@ func GetCountFromDB() (counts int, err error) {
 	return 0, fmt.Errorf("")
 }
 
-func GetLastActualStepFromDb ()(float64, error){
+func GetLastActualStepFromDb() (float64, error) {
 	conn, err := NewDatabaseConnect(driver, dataSource)
 	if err != nil {
 		return 0, err
 	}
-	rows, err:= conn.Query("SELECT MAX(ACTUAL_STEP) AS max FROM ORDERS WHERE BUTTERFLY_EFFECT = 2")
+	rows, err := conn.Query("SELECT MAX(ACTUAL_STEP) AS max FROM ORDERS WHERE BUTTERFLY_EFFECT = 2")
 	defer rows.Close()
 	if err != nil {
 		log.Fatal(err)

@@ -1,0 +1,44 @@
+market:
+   endpoint: "83820f26c00e7dba7943d1ae394a1dd5e02f6d5d@127.0.0.1:15030"
+
+ethereum:
+  key_store: "/Users/doctorcotic/NodeKey"
+  pass_phrase: "11111111"
+
+pool accounts:
+  zec_pool_addr: ""
+  xmr_pool_addr: ""
+  eth_pool_addr: "0x83820F26c00e7Dba7943d1aE394a1Dd5E02F6d5d"
+
+log:
+  level: debug
+
+# Interval for the distance between placed orders
+stepForToken:
+  stepETH: 0.01
+  stepZEC: 1
+  stepXMR: 0.01
+
+# Interval for charging orders (Mh/s)
+chargeOrdersInterval:
+  start: 10
+  destination: 150
+
+# Sensitivity to old orders (in days);
+# Budget allocation for components.
+sensitivity:
+  reaction_to_aging_of_orders: 3
+  margin_accounting: 0.95
+  part_charge: 0.5
+  part_resale: 0.3
+  part_buffer: 0.2
+
+otherParameters:
+  identityForBid:  1
+
+
+# Container fot task app
+images:
+  image: "abefimov/sonm-fake-miner"
+
+

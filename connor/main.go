@@ -20,6 +20,14 @@ import (
 
 const configPath = "insonmnia/arbBot/bot.yaml"
 
+const (
+	coinMarketCapTiker    = "https://api.coinmarketcap.com/v1/ticker/"
+	coinMarketCapSnmTiker = coinMarketCapTiker + "sonm/"
+	cryptoCompareCoinData = "https://www.cryptocompare.com/api/data/coinsnapshotfullbyid/?id="
+	poolReportedHashRate  = "http://178.62.225.107:3000/v1/eth/reportedhashrates/"
+	poolAverageHashRate   = "http://178.62.225.107:3000/v1/eth/avghashrateworkers/"
+)
+
 func main() {
 	cfg, err := config.NewConfig(configPath)
 	if err != nil {
@@ -73,10 +81,10 @@ func main() {
 	poolInit := time.NewTimer(900 * time.Second)
 	defer poolInit.Stop()
 
-	snm := w.NewSNMPriceWatcher("https://api.coinmarketcap.com/v1/ticker/sonm/")
-	token := w.NewTokenPriceWatcher("https://api.coinmarketcap.com/v1/ticker/", "https://www.cryptocompare.com/api/data/coinsnapshotfullbyid/?id=")
-	reportedPool := w.NewPoolWatcher("http://178.62.225.107:3000/v1/eth/reportedhashrates/", []string{cfg.PoolAddress.EthPoolAddr})
-	avgPool := w.NewPoolWatcher("http://178.62.225.107:3000/v1/eth/avghashrateworkers/", []string{cfg.PoolAddress.EthPoolAddr + "/1"})
+	snm := w.NewSNMPriceWatcher(coinMarketCapSnmTiker)
+	token := w.NewTokenPriceWatcher(coinMarketCapTiker, cryptoCompareCoinData)
+	reportedPool := w.NewPoolWatcher(poolReportedHashRate, []string{cfg.PoolAddress.EthPoolAddr})
+	avgPool := w.NewPoolWatcher(poolAverageHashRate, []string{cfg.PoolAddress.EthPoolAddr + "/1"})
 	if err = snm.Update(ctx); err != nil {
 		log.Printf("cannot update snm data: %v\n", err)
 	}

@@ -7,32 +7,33 @@ import (
 	"sync"
 )
 
-//type PoolData struct {
-//	Data struct {
-//		Account            string `json:"account"`
-//		UnconfirmedBalance string `json:"unconfirmed_balance"`
-//		Balance            string `json:"balance"`
-//		Hashrate           string `json:"hashrate"`
-//		AvgHashrate struct {
-//			H1  string `json:"h1"`
-//			H24 string `json:"h24"`
-//		} `json:"avgHashrate"`
-//		Workers []PoolWorker `json:"workers"`
-//	} `json:"data"`
-//}
+type PoolData struct {
+	Data struct {
+		Account            string `json:"account"`
+		UnconfirmedBalance string `json:"unconfirmed_balance"`
+		Balance            string `json:"balance"`
+		Hashrate           string `json:"hashrate"`
+		AvgHashrate struct {
+			H1  string `json:"h1"`
+			H24 string `json:"h24"`
+		} `json:"avgHashrate"`
+		Workers []PoolWorker `json:"workers"`
+	} `json:"data"`
+}
 
-//type PoolWorker struct {
-//	ID        string `json:"id"`
-//	UID       int    `json:"uid"`
-//	Hashrate  string `json:"hashrate"`
-//	Lastshare int    `json:"lastshare"`
-//	Rating    int    `json:"rating"`
-//	H1        string `json:"h1"`
-//	H3        string `json:"h3"`
-//	H6        string `json:"h6"`
-//	H12       string `json:"h12"`
-//	H24       string `json:"h24"`
-//}
+type PoolWorker struct {
+	ID        string `json:"id"`
+	UID       int    `json:"uid"`
+	Hashrate  string `json:"hashrate"`
+	Lastshare int    `json:"lastshare"`
+	Rating    int    `json:"rating"`
+	H1        string `json:"h1"`
+	H3        string `json:"h3"`
+	H6        string `json:"h6"`
+	H12       string `json:"h12"`
+	H24       string `json:"h24"`
+}
+
 type ReportedHashrate struct {
 	Status bool     `json:"status"`
 	Data   []RHData `json:"data"`

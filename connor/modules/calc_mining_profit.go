@@ -58,8 +58,7 @@ func CollectTokensMiningProfit(t watchers.TokenWatcher) ([]*TokenMainData, error
 			log.Printf("DEBUG :: cannot process tokenData %s, not in list\r\n", tokenData.Symbol)
 			continue
 		}
-		PerMonthUSDDisplay := calculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, tokenData.NetHashPerSec, tokenData.BlockReward, divider, tokenData.BlockTime)
-		token.ProfitPerMonthUsd = PerMonthUSDDisplay
+		token.ProfitPerMonthUsd = calculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, tokenData.NetHashPerSec, tokenData.BlockReward, divider, tokenData.BlockTime)
 
 		if token.Symbol == "ETH" {
 			rec.SaveProfitToken(&rec.TokenDb{

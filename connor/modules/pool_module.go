@@ -3,7 +3,7 @@ package modules
 import (
 	"context"
 	"fmt"
-	"github.com/sonm-io/core/connor/config"
+	"github.com/sonm-io/core/connor"
 	"github.com/sonm-io/core/connor/records"
 	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/proto"
@@ -18,7 +18,7 @@ const (
 	EthPool = "stratum+tcp://eth-eu1.nanopool.org:9999"
 )
 
-func DeployNewContainer(ctx context.Context, cfg *config.Config, deal *sonm.Deal, n sonm.TaskManagementClient, image string) (*sonm.StartTaskReply, error) {
+func DeployNewContainer(ctx context.Context, cfg *connor.Config, deal *sonm.Deal, n sonm.TaskManagementClient, image string) (*sonm.StartTaskReply, error) {
 	fmt.Printf("deal = %#v, client = %#v, image = %s\n", deal, n, image)
 	env := map[string]string{
 		"ETH_POOL": EthPool,

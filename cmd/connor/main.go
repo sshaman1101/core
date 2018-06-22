@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/sonm-io/core/connor/config"
 	"github.com/sonm-io/core/connor"
 	"github.com/sonm-io/core/cmd"
 	"fmt"
@@ -19,7 +18,7 @@ func main() {
 }
 
 func run() error {
-	cfg, err := config.NewConfig(configFlag)
+	cfg, err := connor.NewConfig(configFlag)
 	if err != nil {
 		return fmt.Errorf("cannot load config file: %s\r\n", err)
 	}

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sonm-io/core/connor/config"
+	"github.com/sonm-io/core/connor"
 	"github.com/sonm-io/core/connor/records"
 	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/proto"
@@ -38,7 +38,7 @@ const (
 	OrderStatusReinvoice OrderStatus = 4
 )
 
-func getTokenConfiguration(symbol string, cfg *config.Config) (float64, float64, float64, error) {
+func getTokenConfiguration(symbol string, cfg *connor.Config) (float64, float64, float64, error) {
 	switch symbol {
 	case "ETH":
 		return cfg.ChargeIntervalETH.Start, cfg.ChargeIntervalETH.Destination, cfg.Distances.StepForETH, nil
@@ -50,7 +50,7 @@ func getTokenConfiguration(symbol string, cfg *config.Config) (float64, float64,
 	return 0, 0, 0, nil
 }
 
-func ChargeOrdersOnce(ctx context.Context, symbol string, marketClient sonm.MarketClient, token watchers.TokenWatcher, snm watchers.PriceWatcher, balanceReply *sonm.BalanceReply, cfg *config.Config, ethAddr *sonm.EthAddress) error {
+func ChargeOrdersOnce(ctx context.Context, symbol string, marketClient sonm.MarketClient, token watchers.TokenWatcher, snm watchers.PriceWatcher, balanceReply *sonm.BalanceReply, cfg *connor.Config, ethAddr *sonm.EthAddress) error {
 	records.CreateOrderDB()
 	start, destination, step, err := getTokenConfiguration(symbol, cfg)
 	if err != nil {
@@ -122,7 +122,7 @@ func ChargeOrdersOnce(ctx context.Context, symbol string, marketClient sonm.Mark
 
 // Prepare price and Map depends on token symbol.
 // Create orders to the market, until the budget is over.
-func ChargeOrders(ctx context.Context, cfg *config.Config, client sonm.MarketClient, symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64, ethAddr *sonm.EthAddress) (float64, error) {
+func ChargeOrders(ctx context.Context, cfg *connor.Config, client sonm.MarketClient, symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64, ethAddr *sonm.EthAddress) (float64, error) {
 	requiredHashRate := uint64(buyMghash * hashes)
 	benchmarks, err := getBenchmarksForSymbol(symbol, uint64(requiredHashRate))
 	if err != nil {
@@ -136,7 +136,7 @@ func ChargeOrders(ctx context.Context, cfg *config.Config, client sonm.MarketCli
 }
 
 // Create order on market depends on token.
-func CreateOrderOnMarketStep(ctx context.Context, cfg *config.Config, market sonm.MarketClient, step float64, benchmarks map[string]uint64, buyMgHash float64, price *big.Int, ethAddr *sonm.EthAddress) (float64, error) {
+func CreateOrderOnMarketStep(ctx context.Context, cfg *connor.Config, market sonm.MarketClient, step float64, benchmarks map[string]uint64, buyMgHash float64, price *big.Int, ethAddr *sonm.EthAddress) (float64, error) {
 	actOrder, err := market.CreateOrder(ctx, &sonm.BidOrder{
 		Tag:      "Connor bot",
 		Duration: &sonm.Duration{},
@@ -193,9 +193,9 @@ func GetPriceForTokenPerSec(token watchers.TokenWatcher, symbol string) (float64
 }
 
 // After charge orders
-func TradeObserve(ctx context.Context, ethAddr *sonm.EthAddress, dealCli sonm.DealManagementClient, pool watchers.PoolWatcher, token watchers.TokenWatcher, marketClient sonm.MarketClient, taskCli sonm.TaskManagementClient, cfg *config.Config) error {
+func TradeObserve(ctx context.Context, c *connor.Connor, pool watchers.PoolWatcher, token watchers.TokenWatcher, cfg *connor.Config) error {
 	log.Printf("MODULE TRADE OBSERVE :: ")
-	err := SaveActiveDealsIntoDB(ctx, dealCli)
+	err := SaveActiveDealsIntoDB(ctx, c.DealClient)
 	if err != nil {
 		fmt.Printf("cannot save active deals intoDB %v\r\n", err)
 	}
@@ -216,13 +216,13 @@ func TradeObserve(ctx context.Context, ethAddr *sonm.EthAddress, dealCli sonm.De
 	if err != nil {
 		return fmt.Errorf("cannot get orders from DB %v\r\n", err)
 	}
-	OrdersProfitTracking(ctx, cfg, actualPrice, orders, marketClient)
-	ResponseActiveDeals(ctx, cfg, deals, marketClient, dealCli, taskCli, cfg.Images.Image)
-	DealsProfitTracking(ctx, actualPrice, dealCli, marketClient, deals)
+	OrdersProfitTracking(ctx, cfg, actualPrice, orders, c.Market)
+	ResponseActiveDeals(ctx, cfg, deals, c.Market, c.DealClient, c.TaskClient, cfg.Images.Image)
+	DealsProfitTracking(ctx, actualPrice, c.DealClient, c.Market, deals)
 	return nil
 }
 
-func ReinvoiceOrder(ctx context.Context, cfg *config.Config, m sonm.MarketClient, price *sonm.Price, bench map[string]uint64, tag string) error {
+func ReinvoiceOrder(ctx context.Context, cfg *connor.Config, m sonm.MarketClient, price *sonm.Price, bench map[string]uint64, tag string) error {
 	order, err := m.CreateOrder(ctx, &sonm.BidOrder{
 		Duration: &sonm.Duration{Nanoseconds: 0},
 		Price:    price,
@@ -257,7 +257,7 @@ func ReinvoiceOrder(ctx context.Context, cfg *config.Config, m sonm.MarketClient
 }
 
 // Get active deals --> for each active deal DEPLOY NEW CONTAINER --> Reinvoice order
-func ResponseActiveDeals(ctx context.Context, cfg *config.Config, dealsDb []*records.DealDb, m sonm.MarketClient, dealCli sonm.DealManagementClient, tMng sonm.TaskManagementClient, imageMonero string) error {
+func ResponseActiveDeals(ctx context.Context, cfg *connor.Config, dealsDb []*records.DealDb, m sonm.MarketClient, dealCli sonm.DealManagementClient, tMng sonm.TaskManagementClient, imageMonero string) error {
 	for _, dealDb := range dealsDb {
 		if dealDb.Status == 1 && dealDb.DeployStatus == 4 {
 			getDealFromMarket, err := dealCli.Status(ctx, &sonm.BigInt{Abs: big.NewInt(dealDb.DealID).Bytes()})
@@ -303,7 +303,7 @@ func CmpChangeOfPrice(change float64, def float64) (int32, error) {
 	return 0, nil
 }
 
-func OrdersProfitTracking(ctx context.Context, cfg *config.Config, actualPrice *big.Int, ordersDb []*records.OrderDb, m sonm.MarketClient) error {
+func OrdersProfitTracking(ctx context.Context, cfg *connor.Config, actualPrice *big.Int, ordersDb []*records.OrderDb, m sonm.MarketClient) error {
 	log.Printf("MODULE :: Orders Profit Tracking")
 	actualPriceCur := big.NewInt(actualPrice.Int64())
 
@@ -396,7 +396,7 @@ func DealsProfitTracking(ctx context.Context, actualPrice *big.Int, dealClient s
 }
 
 // Get orders FROM DATABASE ==> if order's created time more cfg.Days -> order is cancelled ==> save to BD as "cancelled" (3).
-func CheckAndCancelOldOrders(ctx context.Context, m sonm.MarketClient, cfg *config.Config) {
+func CheckAndCancelOldOrders(ctx context.Context, m sonm.MarketClient, cfg *connor.Config) {
 	ordersDb, err := records.GetOrdersFromDB()
 	if err != nil {
 		fmt.Printf("Cannot get orders from DB %v\r\n", err)

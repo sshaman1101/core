@@ -4,7 +4,6 @@ import (
 	"github.com/sonm-io/core/util/xgrpc"
 	"context"
 	"crypto/ecdsa"
-	"github.com/sonm-io/core/connor/config"
 	"google.golang.org/grpc/credentials"
 	"github.com/sonm-io/core/util"
 	"log"
@@ -27,15 +26,15 @@ const (
 
 type Connor struct {
 	key         *ecdsa.PrivateKey
-	market      sonm.MarketClient
-	taskClient  sonm.TaskManagementClient
-	dealClient  sonm.DealManagementClient
-	tokenClient sonm.TokenManagementClient
+	Market      sonm.MarketClient
+	TaskClient  sonm.TaskManagementClient
+	DealClient  sonm.DealManagementClient
+	TokenClient sonm.TokenManagementClient
 
-	cfg *config.Config
+	cfg *Config
 }
 
-func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *config.Config) (*Connor, error) {
+func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor, error) {
 	connor := &Connor{
 		key: key,
 		cfg: cfg,
@@ -51,12 +50,12 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *config.Config) (
 		return nil, fmt.Errorf("can't create node connection: %v\r\n", err)
 	}
 
-	connor.market = sonm.NewMarketClient(nodeCC)
-	connor.taskClient = sonm.NewTaskManagementClient(nodeCC)
-	connor.dealClient = sonm.NewDealManagementClient(nodeCC)
-	connor.tokenClient = sonm.NewTokenManagementClient(nodeCC)
+	connor.Market = sonm.NewMarketClient(nodeCC)
+	connor.TaskClient = sonm.NewTaskManagementClient(nodeCC)
+	connor.DealClient = sonm.NewDealManagementClient(nodeCC)
+	connor.TokenClient = sonm.NewTokenManagementClient(nodeCC)
 
-	balanceReply, err := connor.tokenClient.Balance(ctx, &sonm.Empty{})
+	balanceReply, err := connor.TokenClient.Balance(ctx, &sonm.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("Cannot load balanceReply %v\r\n", err)
 	}
@@ -98,8 +97,6 @@ func (c *Connor) Serve(ctx context.Context) error {
 		return fmt.Errorf("cannot update avgPool data: %v", err)
 	}
 
-	ethAddr := &sonm.EthAddress{Address: crypto.PubkeyToAddress(c.key.PublicKey).Bytes()}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -112,13 +109,12 @@ func (c *Connor) Serve(ctx context.Context) error {
 				return fmt.Errorf("cannot update TOKEN data: %v\n", err)
 			}
 			go modules.CollectTokensMiningProfit(token)
-
 		case <-tradeUpdate.C:
-			modules.TradeObserve(ctx, ethAddr, c.dealClient, reportedPool, token, c.market, c.taskClient, c.cfg)
+			modules.TradeObserve(ctx, c, reportedPool, token, c.cfg)
 		case <-poolInit.C:
 			modules.SavePoolDataToDb(ctx, reportedPool, c.cfg.PoolAddress.EthPoolAddr)
 		case <-poolTrack.C:
-			modules.PoolTrack(ctx, reportedPool, avgPool, c.cfg.PoolAddress.EthPoolAddr, c.dealClient, c.market)
+			modules.PoolTrack(ctx, reportedPool, avgPool, c.cfg.PoolAddress.EthPoolAddr, c.DealClient, c.Market)
 		}
 	}
 }

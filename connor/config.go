@@ -1,4 +1,4 @@
-package config
+package connor
 
 import (
 	"github.com/jinzhu/configor"

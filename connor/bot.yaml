@@ -19,10 +19,20 @@ stepForToken:
   stepZEC: 1
   stepXMR: 0.01
 
-# Interval for charging orders (Mh/s)
+# Interval for charging ETH orders (Mh/s)
 chargeOrdersInterval:
   start: 10
-  destination: 150
+  destination: 700
+
+# Interval for charging ZEC orders (H/s)
+chargeOrdersZECInterval:
+  start: 250
+  destination: 9000
+
+# Interval for charging XMR orders (H/s)
+chargeOrdersXMRInterval:
+  start: 1500
+  destination: 22200
 
 # Sensitivity to old orders (in days);
 # Budget allocation for components.
@@ -34,8 +44,7 @@ sensitivity:
   part_buffer: 0.2
 
 otherParameters:
-  identityForBid:  1
-
+  identityForBid: "ANONYMOUS"
 
 # Container fot task app
 images:

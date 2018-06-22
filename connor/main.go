@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const configPath = "insonmnia/arbBot/bot.yaml"
+const configPath = "core/connor/bot.yaml"
 
 func main() {
 	cfg, err := config.NewConfig(configPath)
@@ -62,13 +62,12 @@ func main() {
 	fmt.Printf(" >>>>> Public Key address  :: %v\r\n", crypto.PubkeyToAddress(key.PublicKey).Hex())
 
 	ethAddr := &sonm.EthAddress{Address: crypto.PubkeyToAddress(key.PublicKey).Bytes()}
-	identityLVl := GetIdentityLvl(cfg)
 
 	dataUpdate := time.NewTicker(3 * time.Second)
 	defer dataUpdate.Stop()
 	tradeUpdate := time.NewTicker(3 * time.Second)
 	defer tradeUpdate.Stop()
-	poolTrack := time.NewTicker(900 * time.Second) //900
+	poolTrack := time.NewTicker(900 * time.Second)
 	defer poolTrack.Stop()
 	poolInit := time.NewTimer(900 * time.Second)
 	defer poolInit.Stop()
@@ -90,14 +89,35 @@ func main() {
 		log.Printf("cannot update avgPool data: %v\n", err)
 	}
 
-	modules.ChargeOrdersOnce(ctx, marketClient, token, snm, balanceReply, cfg, ethAddr, identityLVl)
+
+
+	res:= modules.CalculateMiningProfit(172.435, 1,525114264, 1, 1, 150)
+	if err != nil {
+
+	}
+	fmt.Printf("result :: %v\r\n", res)
+	modules.ChargeOrdersOnce(ctx, "ZEC", marketClient, token, snm, balanceReply, cfg, ethAddr)
+	os.Exit(1)
+
+
+	profitEthPerMonth, profitETHPerSec, err := modules.GetPriceForTokenPerSec(token, "ETH")
+	profitZecPerMonth, profitZecPerSec, err := modules.GetPriceForTokenPerSec(token, "ZEC")
+	profitXmrPerMonth, profitXmrPerSec, err := modules.GetPriceForTokenPerSec(token, "XMR")
+
+
+
+	fmt.Printf("PROFIT PER MONTH :: ETH: %.2f $, ZEC %.2f $, XMR %.2f $\r\n", profitEthPerMonth, profitZecPerMonth, profitXmrPerMonth)
+	fmt.Printf("PROFIT PER SEC   :: ETH: %v $, ZEC %v $, XMR %v $\r\n", profitETHPerSec, profitZecPerSec, profitXmrPerSec)
+
+
+	go modules.ChargeOrdersOnce(ctx, "ZEC", marketClient, token, snm, balanceReply, cfg, ethAddr)
+	go modules.ChargeOrdersOnce(ctx, "XMR",marketClient, token, snm, balanceReply, cfg, ethAddr)
 
 	for {
 		select {
 		case <-ctx.Done():
 			log.Println("context done")
 			return
-
 		case <-dataUpdate.C:
 			if err = snm.Update(ctx); err != nil {
 				log.Printf(" cannot update SNM data: %v\n", err)
@@ -108,7 +128,7 @@ func main() {
 			go modules.CollectTokensMiningProfit(token)
 
 		case <-tradeUpdate.C:
-			modules.TradeObserve(ctx, ethAddr, dealCli, reportedPool, token, marketClient, taskCli, cfg, identityLVl)
+			modules.TradeObserve(ctx, ethAddr, dealCli, reportedPool, token, marketClient, taskCli, cfg)
 		case <-poolInit.C:
 			modules.SavePoolDataToDb(ctx, reportedPool, cfg.PoolAddress.EthPoolAddr)
 		case <-poolTrack.C:
@@ -117,19 +137,7 @@ func main() {
 	}
 }
 
-func GetIdentityLvl(cfg *config.Config) sonm.IdentityLevel {
-	switch cfg.OtherParameters.IdentityForBid {
-	case 1:
-		return sonm.IdentityLevel_ANONYMOUS
-	case 2:
-		return sonm.IdentityLevel_REGISTERED
-	case 3:
-		return sonm.IdentityLevel_IDENTIFIED
-	case 4:
-		return sonm.IdentityLevel_PROFESSIONAL
-	}
-	return sonm.IdentityLevel_UNKNOWN
-}
+
 func newCredentials(ctx context.Context, key *ecdsa.PrivateKey) (credentials.TransportCredentials, error) {
 	_, TLSConfig, err := util.NewHitlessCertRotator(ctx, key)
 	if err != nil {

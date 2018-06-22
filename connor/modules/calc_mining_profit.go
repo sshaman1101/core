@@ -22,8 +22,8 @@ type powerAndDivider struct {
 func getHashPowerAndDividerForToken(s string, hp float64) (float64, float64, bool) {
 	var tokenHashPower = map[string]powerAndDivider{
 		"ETH": {div: 1, power: hashingPower * 1000000.0},
-		"XMR": {div: 1, power: hp / 1000000.0},
-		"ZEC": {div: 1, power: hp / 1000.0},
+		"XMR": {div: 1, power: 1},
+		"ZEC": {div: 1, power: 1},
 	}
 	p, ok := tokenHashPower[s]
 	if !ok {
@@ -58,8 +58,12 @@ func CollectTokensMiningProfit(t watchers.TokenWatcher) ([]*TokenMainData, error
 			log.Printf("DEBUG :: cannot process tokenData %s, not in list\r\n", tokenData.Symbol)
 			continue
 		}
-		PerMonthUSDDisplay := calculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, tokenData.NetHashPerSec, tokenData.BlockReward, divider, tokenData.BlockTime)
+		nethashesPersec := int64(tokenData.NetHashPerSec)
+		fmt.Printf("====> nethashes :: %v\r\n", nethashesPersec)
+		PerMonthUSDDisplay := CalculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, float64(nethashesPersec), tokenData.BlockReward, divider,   tokenData.BlockTime)
 		token.ProfitPerMonthUsd = PerMonthUSDDisplay
+		fmt.Printf("TOKEN :: %v, priceUSD: %v, hashes per Sec: %v, net hashes per sec : %v, block reward : %v, divider %v, blockTime : %v, PROFIT PER MONTH : %v\r\n",
+			token.Symbol, tokenData.PriceUSD, hashesPerSecond, nethashesPersec, tokenData.BlockReward, divider, tokenData.BlockTime, PerMonthUSDDisplay)
 
 		if token.Symbol == "ETH" {
 			rec.SaveProfitToken(&rec.TokenDb{
@@ -76,18 +80,19 @@ func CollectTokensMiningProfit(t watchers.TokenWatcher) ([]*TokenMainData, error
 	}
 	return tokensForCalc, nil
 }
-func calculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) float64 {
+func CalculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) float64 {
+	fmt.Printf("calculate mining profit ========================\r\n")
 	currentHashingPower := hashesPerSecond / div
+	fmt.Printf("hashes per sec :: %v, div :: %v\r\n", hashesPerSecond, div)
 	miningShare := currentHashingPower / (netHashesPerSecond + currentHashingPower)
-
-	minedPerDay := miningShare * 86400 / float64(blockTime) * (blockReward / div)
-
+	fmt.Printf("mining share :: %v\r\n", miningShare)
+	minedPerDay := miningShare * 86400 /float64(blockTime) * blockReward / div
+	fmt.Printf("mined per day :: %v\r\n", hashesPerSecond)
 	powerCostPerDayUSD := (powerConsumption * 24) / 1000 * costPerkWh
-	returnPerDayUSD := (usd*minedPerDay - (usd * minedPerDay * 0.01)) - powerCostPerDayUSD
-
-	//profitRatio := (returnPerDayUSD / (powerCostPerDayUSD)) / 10
+	fmt.Printf("powerCost per day :: %v\r\n", powerCostPerDayUSD)
+	returnPerDayUSD := (usd*float64(minedPerDay) - (usd * float64(minedPerDay) * 0.01)) - powerCostPerDayUSD
+	fmt.Printf("current hashing power :: %v, price USD :: %v\r\n", currentHashingPower, usd)
 	perMonthUSD := float64(returnPerDayUSD * 30)
-	//marginPrice := perMonthUSD + (perMonthUSD * 0.05)
 	return perMonthUSD
 }
 

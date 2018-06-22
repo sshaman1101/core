@@ -18,7 +18,6 @@ import (
 
 const (
 	hashes       = 1000000
-	symbETH      = "ETH"
 	daysPerMonth = 30
 	secsPerDay   = 86400
 	partCharge   = 0.5
@@ -39,8 +38,25 @@ const (
 	OrderStatusReinvoice OrderStatus = 4
 )
 
-func ChargeOrdersOnce(ctx context.Context, marketClient sonm.MarketClient, token watchers.TokenWatcher, snm watchers.PriceWatcher, balanceReply *sonm.BalanceReply, cfg *config.Config, ethAddr *sonm.EthAddress, identityLvl sonm.IdentityLevel) error {
+func getTokenConfiguration(symbol string, cfg *config.Config) (float64, float64, float64, error) {
+	switch symbol {
+	case "ETH":
+		return cfg.ChargeIntervalETH.Start, cfg.ChargeIntervalETH.Destination, cfg.Distances.StepForETH, nil
+	case "ZEC":
+		return cfg.ChargeIntervalZEC.Start, cfg.ChargeIntervalZEC.Destination, cfg.Distances.StepForZEC, nil
+	case "XMR":
+		return cfg.ChargeIntervalXMR.Start, cfg.ChargeIntervalXMR.Destination, cfg.Distances.StepForXMR, nil
+	}
+	return 0, 0, 0, nil
+}
+
+func ChargeOrdersOnce(ctx context.Context, symbol string, marketClient sonm.MarketClient, token watchers.TokenWatcher, snm watchers.PriceWatcher, balanceReply *sonm.BalanceReply, cfg *config.Config, ethAddr *sonm.EthAddress) error {
 	records.CreateOrderDB()
+	start, destination, step, err := getTokenConfiguration(symbol, cfg)
+	if err != nil {
+		log.Printf("cannot get token configuraton %v\r\n", err)
+		return err
+	}
 	count, err := records.GetCountFromDB()
 	if err != nil {
 		log.Printf("Cannot get count from DB: %v\r\n", err)
@@ -54,13 +70,14 @@ func ChargeOrdersOnce(ctx context.Context, marketClient sonm.MarketClient, token
 			Hashrate:        0,
 			StartTime:       time.Time{},
 			ButterflyEffect: 2,
-			ActualStep:      cfg.ChargeInterval.Start,
+			ActualStep:      start,
 		}); err != nil {
 			fmt.Printf("Cannot save order into DB %v\r\n", err)
 		}
 	}
 
-	pricePerMonthUSD, pricePerSecMh, err := GetPriceForTokenPerSec(token)
+
+	pricePerMonthUSD, pricePerSecMh, err := GetPriceForTokenPerSec(token, symbol)
 	if err != nil {
 		log.Printf("Cannot get profit for tokens: %v\r\n", err)
 		return err
@@ -69,33 +86,33 @@ func ChargeOrdersOnce(ctx context.Context, marketClient sonm.MarketClient, token
 	limitChargeInSNMClone := big.NewInt(0).Set(limitChargeInSNM)
 	limitChargeInUSD := ConvertingToUSDBalance(limitChargeInSNMClone, snm.GetPrice())
 
-	mhashForETH, err := records.GetLastActualStepFromDb()
+	mhashForToken, err := records.GetLastActualStepFromDb()
 	if err != nil {
 		log.Printf("Cannot get last actual step from DB %v\r\n", err)
 		return err
 	}
 
-	pricePackMhInUSDPerMonth := mhashForETH * (pricePerMonthUSD * cfg.Sensitivity.MarginAccounting)
+	pricePackMhInUSDPerMonth := mhashForToken * (pricePerMonthUSD * cfg.Sensitivity.MarginAccounting)
 	sumOrdersPerMonth := limitChargeInUSD / pricePackMhInUSDPerMonth
 
-	log.Printf("CHARGE ORDERS ONCE: \r\n"+
+	log.Printf("CHARGE %v ORDERS ONCE: \r\n"+
 		"Price per month %.2f USD, price per sec %v USD for Mh/s\r\n"+
 		"Limit for Charge		   :: %.2f $ (%.8v SNM)\r\n"+
 		"Price Order Per Month	   :: %f $\r\n"+
 		"Default step			   :: %.2f MH/s\r\n"+
 		"You can create 			   :: %v orders ranging from: %.2f Mh/s - %.2f Mh/s with step: %.2f\r\n"+
 		"START CHARGE ..................................",
-		pricePerMonthUSD, pricePerSecMh, limitChargeInUSD, PriceToString(limitChargeInSNM), pricePackMhInUSDPerMonth, mhashForETH, int(sumOrdersPerMonth),
-		cfg.ChargeInterval.Start, cfg.ChargeInterval.Destination, cfg.Distances.StepForETH)
+		symbol, pricePerMonthUSD, pricePerSecMh, limitChargeInUSD, PriceToString(limitChargeInSNM), pricePackMhInUSDPerMonth, mhashForToken, int(sumOrdersPerMonth),
+		start, destination, step)
 	os.Exit(1)
 	for i := 0; i < int(sumOrdersPerMonth); i++ {
-		if mhashForETH >= cfg.ChargeInterval.Destination {
-			fmt.Printf("Charge is finished cause reached the limit %.2f Mh/s\r\n", cfg.ChargeInterval.Destination)
+		if mhashForToken >= destination {
+			fmt.Printf("Charge is finished cause reached the limit %.2f Mh/s\r\n", cfg.ChargeIntervalETH.Destination)
 			break
 		}
-		pricePerSecPack := FloatToBigInt(mhashForETH * pricePerSecMh)
+		pricePerSecPack := FloatToBigInt(mhashForToken * pricePerSecMh)
 		log.Printf("Price :: %v\r\n", PriceToString(pricePerSecPack))
-		mhashForETH, err = ChargeOrders(ctx, marketClient, symbETH, pricePerSecPack, cfg.Distances.StepForETH, mhashForETH, ethAddr, identityLvl)
+		mhashForToken, err = ChargeOrders(ctx, cfg, marketClient, symbol, pricePerSecPack, step, mhashForToken, ethAddr)
 		if err != nil {
 			return fmt.Errorf("Cannot charging market! %v\r\n", err)
 		}
@@ -106,13 +123,13 @@ func ChargeOrdersOnce(ctx context.Context, marketClient sonm.MarketClient, token
 
 // Prepare price and Map depends on token symbol.
 // Create orders to the market, until the budget is over.
-func ChargeOrders(ctx context.Context, client sonm.MarketClient, symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64, ethAddr *sonm.EthAddress, identityLvl sonm.IdentityLevel) (float64, error) {
+func ChargeOrders(ctx context.Context, cfg *config.Config, client sonm.MarketClient, symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64, ethAddr *sonm.EthAddress) (float64, error) {
 	requiredHashRate := uint64(buyMghash * hashes)
 	benchmarks, err := getBenchmarksForSymbol(symbol, uint64(requiredHashRate))
 	if err != nil {
 		return 0, err
 	}
-	buyMghash, err = CreateOrderOnMarketStep(ctx, client, step, benchmarks, buyMghash, priceForHashPerSec, ethAddr, identityLvl)
+	buyMghash, err = CreateOrderOnMarketStep(ctx, cfg, client, step, benchmarks, buyMghash, priceForHashPerSec, ethAddr)
 	if err != nil {
 		return 0, err
 	}
@@ -120,7 +137,7 @@ func ChargeOrders(ctx context.Context, client sonm.MarketClient, symbol string, 
 }
 
 // Create order on market depends on token.
-func CreateOrderOnMarketStep(ctx context.Context, market sonm.MarketClient, step float64, benchmarks map[string]uint64, buyMgHash float64, price *big.Int, ethAddr *sonm.EthAddress, identityLvl sonm.IdentityLevel) (float64, error) {
+func CreateOrderOnMarketStep(ctx context.Context, cfg *config.Config, market sonm.MarketClient, step float64, benchmarks map[string]uint64, buyMgHash float64, price *big.Int, ethAddr *sonm.EthAddress) (float64, error) {
 	actOrder, err := market.CreateOrder(ctx, &sonm.BidOrder{
 		Tag:      "Connor bot",
 		Duration: &sonm.Duration{},
@@ -128,7 +145,7 @@ func CreateOrderOnMarketStep(ctx context.Context, market sonm.MarketClient, step
 			PerSecond: sonm.NewBigInt(price),
 		},
 		Blacklist: ethAddr,
-		Identity:  identityLvl,
+		Identity:  cfg.OtherParameters.IdentityForBid,
 		Resources: &sonm.BidResources{
 			Benchmarks: benchmarks,
 			Network: &sonm.BidNetwork{
@@ -163,12 +180,12 @@ func CreateOrderOnMarketStep(ctx context.Context, market sonm.MarketClient, step
 	return buyMgHash, nil
 }
 
-func GetPriceForTokenPerSec(token watchers.TokenWatcher) (float64, float64, error) {
+func GetPriceForTokenPerSec(token watchers.TokenWatcher, symbol string) (float64, float64, error) {
 	tokens, err := CollectTokensMiningProfit(token)
 	if err != nil {
 		return 0, 0, fmt.Errorf("Cannot calculate token prices: %v\r\n", err)
 	}
-	pricePerMonthUSD, err := GetProfitForTokenBySymbol(tokens, symbETH)
+	pricePerMonthUSD, err := GetProfitForTokenBySymbol(tokens, symbol)
 	if err != nil {
 		return 0, 0, fmt.Errorf("Cannot get profit for tokens: %v\r\n", err)
 	}
@@ -177,14 +194,14 @@ func GetPriceForTokenPerSec(token watchers.TokenWatcher) (float64, float64, erro
 }
 
 // After charge orders
-func TradeObserve(ctx context.Context, ethAddr *sonm.EthAddress, dealCli sonm.DealManagementClient, pool watchers.PoolWatcher, token watchers.TokenWatcher, marketClient sonm.MarketClient, taskCli sonm.TaskManagementClient, cfg *config.Config, identityLvl sonm.IdentityLevel) error {
+func TradeObserve(ctx context.Context, ethAddr *sonm.EthAddress, dealCli sonm.DealManagementClient, pool watchers.PoolWatcher, token watchers.TokenWatcher, marketClient sonm.MarketClient, taskCli sonm.TaskManagementClient, cfg *config.Config) error {
 	log.Printf("MODULE TRADE OBSERVE :: ")
 	err := SaveActiveDealsIntoDB(ctx, dealCli)
 	if err != nil {
 		fmt.Printf("cannot save active deals intoDB %v\r\n", err)
 	}
 
-	_, pricePerSec, err := GetPriceForTokenPerSec(token)
+	_, pricePerSec, err := GetPriceForTokenPerSec(token, "ETH")
 	if err != nil {
 		fmt.Printf("cannot get pricePerSec for token per sec %v\r\n", err)
 	}
@@ -200,18 +217,18 @@ func TradeObserve(ctx context.Context, ethAddr *sonm.EthAddress, dealCli sonm.De
 	if err != nil {
 		return fmt.Errorf("cannot get orders from DB %v\r\n", err)
 	}
-	OrdersProfitTracking(ctx, actualPrice, orders, marketClient, identityLvl)
-	ResponseActiveDeals(ctx, cfg, deals, marketClient, dealCli, taskCli, cfg.Images.Image, identityLvl)
+	OrdersProfitTracking(ctx, cfg, actualPrice, orders, marketClient)
+	ResponseActiveDeals(ctx, cfg, deals, marketClient, dealCli, taskCli, cfg.Images.Image)
 	DealsProfitTracking(ctx, actualPrice, dealCli, marketClient, deals)
 	return nil
 }
 
-func ReinvoiceOrder(ctx context.Context, m sonm.MarketClient, price *sonm.Price, bench map[string]uint64, tag string, identityLvl sonm.IdentityLevel) error {
+func ReinvoiceOrder(ctx context.Context, cfg *config.Config, m sonm.MarketClient, price *sonm.Price, bench map[string]uint64, tag string) error {
 	order, err := m.CreateOrder(ctx, &sonm.BidOrder{
 		Duration: &sonm.Duration{Nanoseconds: 0},
 		Price:    price,
 		Tag:      tag,
-		Identity: identityLvl,
+		Identity: cfg.OtherParameters.IdentityForBid,
 		Resources: &sonm.BidResources{
 			Network: &sonm.BidNetwork{
 				Overlay:  false,
@@ -241,7 +258,7 @@ func ReinvoiceOrder(ctx context.Context, m sonm.MarketClient, price *sonm.Price,
 }
 
 // Get active deals --> for each active deal DEPLOY NEW CONTAINER --> Reinvoice order
-func ResponseActiveDeals(ctx context.Context, cfg *config.Config, dealsDb []*records.DealDb, m sonm.MarketClient, dealCli sonm.DealManagementClient, tMng sonm.TaskManagementClient, imageMonero string, identityLvl sonm.IdentityLevel) error {
+func ResponseActiveDeals(ctx context.Context, cfg *config.Config, dealsDb []*records.DealDb, m sonm.MarketClient, dealCli sonm.DealManagementClient, tMng sonm.TaskManagementClient, imageMonero string) error {
 	for _, dealDb := range dealsDb {
 		if dealDb.Status == 1 && dealDb.DeployStatus == 4 {
 			getDealFromMarket, err := dealCli.Status(ctx, &sonm.BigInt{Abs: big.NewInt(dealDb.DealID).Bytes()})
@@ -270,7 +287,7 @@ func ResponseActiveDeals(ctx context.Context, cfg *config.Config, dealsDb []*rec
 				fmt.Printf("Cannot get benchmarks from bid Order : %v\r\n", bidOrder.Id.Unwrap().Int64())
 				return err
 			}
-			ReinvoiceOrder(ctx, m, &sonm.Price{deal.GetPrice()}, bench, "Reinvoice", identityLvl)
+			ReinvoiceOrder(ctx, cfg, m, &sonm.Price{deal.GetPrice()}, bench, "Reinvoice")
 		} else {
 			fmt.Printf("For all received deals status :: DEPLOYED")
 		}
@@ -287,7 +304,7 @@ func CmpChangeOfPrice(change float64, def float64) (int32, error) {
 	return 0, nil
 }
 
-func OrdersProfitTracking(ctx context.Context, actualPrice *big.Int, ordersDb []*records.OrderDb, m sonm.MarketClient, identityLvl sonm.IdentityLevel) error {
+func OrdersProfitTracking(ctx context.Context, cfg *config.Config, actualPrice *big.Int, ordersDb []*records.OrderDb, m sonm.MarketClient) error {
 	log.Printf("MODULE :: Orders Profit Tracking")
 	actualPriceCur := big.NewInt(actualPrice.Int64())
 
@@ -318,7 +335,7 @@ func OrdersProfitTracking(ctx context.Context, actualPrice *big.Int, ordersDb []
 						return err
 					}
 					tag := strconv.Itoa(int(orderDb.OrderID))
-					ReinvoiceOrder(ctx, m, &sonm.Price{sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice OldOrder: "+tag, identityLvl)
+					ReinvoiceOrder(ctx, cfg, m, &sonm.Price{sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice OldOrder: "+tag)
 					m.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
 				}
 			} else {

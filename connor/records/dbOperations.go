@@ -61,7 +61,7 @@ const (
 	);
 `
 	driver     = "sqlite3"
-	dataSource = "insonmnia/arbBot/test.sq3"
+	dataSource = "core/connor/test.sq3"
 )
 
 var db *sqlx.DB

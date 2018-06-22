@@ -13,7 +13,7 @@ import (
 	"fmt"
 
 	w "github.com/sonm-io/core/connor/watchers"
-	"github.com/sonm-io/core/connor/modules"
+	"github.com/sonm-io/core/connor/database"
 )
 
 const (
@@ -24,6 +24,11 @@ const (
 	poolAverageHashRate   = "http://178.62.225.107:3000/v1/eth/avghashrateworkers/"
 )
 
+const (
+	driver     = "sqlite3"
+	dataSource = "./connor/tests/test.sq3"
+)
+
 type Connor struct {
 	key         *ecdsa.PrivateKey
 	Market      sonm.MarketClient
@@ -32,6 +37,7 @@ type Connor struct {
 	TokenClient sonm.TokenManagementClient
 
 	cfg *Config
+	db  *database.Database
 }
 
 func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor, error) {
@@ -54,6 +60,11 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 	connor.TaskClient = sonm.NewTaskManagementClient(nodeCC)
 	connor.DealClient = sonm.NewDealManagementClient(nodeCC)
 	connor.TokenClient = sonm.NewTokenManagementClient(nodeCC)
+
+	connor.db, err = database.NewDatabaseConnect(driver, dataSource)
+	if err != nil {
+		return nil, err
+	}
 
 	balanceReply, err := connor.TokenClient.Balance(ctx, &sonm.Empty{})
 	if err != nil {
@@ -97,6 +108,8 @@ func (c *Connor) Serve(ctx context.Context) error {
 		return fmt.Errorf("cannot update avgPool data: %v", err)
 	}
 
+	m := NewModules(c)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -108,13 +121,13 @@ func (c *Connor) Serve(ctx context.Context) error {
 			if err = token.Update(ctx); err != nil {
 				return fmt.Errorf("cannot update TOKEN data: %v\n", err)
 			}
-			go modules.CollectTokensMiningProfit(token)
+			go m.CollectTokensMiningProfit(token)
 		case <-tradeUpdate.C:
-			modules.TradeObserve(ctx, c, reportedPool, token, c.cfg)
+			m.TradeObserve(ctx, c, reportedPool, token, c.cfg)
 		case <-poolInit.C:
-			modules.SavePoolDataToDb(ctx, reportedPool, c.cfg.PoolAddress.EthPoolAddr)
+			m.SavePoolDataToDb(ctx, reportedPool, c.cfg.PoolAddress.EthPoolAddr)
 		case <-poolTrack.C:
-			modules.PoolTrack(ctx, reportedPool, avgPool, c.cfg.PoolAddress.EthPoolAddr, c.DealClient, c.Market)
+			m.PoolTrack(ctx, reportedPool, avgPool, c.cfg.PoolAddress.EthPoolAddr, c.DealClient)
 		}
 	}
 }

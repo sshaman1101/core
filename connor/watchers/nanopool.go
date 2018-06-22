@@ -13,7 +13,7 @@ type PoolData struct {
 		UnconfirmedBalance string `json:"unconfirmed_balance"`
 		Balance            string `json:"balance"`
 		Hashrate           string `json:"hashrate"`
-		AvgHashrate struct {
+		AvgHashrate        struct {
 			H1  string `json:"h1"`
 			H24 string `json:"h24"`
 		} `json:"avgHashrate"`

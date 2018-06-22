@@ -22,8 +22,8 @@ type powerAndDivider struct {
 func getHashPowerAndDividerForToken(s string, hp float64) (float64, float64, bool) {
 	var tokenHashPower = map[string]powerAndDivider{
 		"ETH": {div: 1, power: hashingPower * 1000000.0},
-		"XMR": {div: 1, power: hp / 1000000.0},
-		"ZEC": {div: 1, power: hp / 1000.0},
+		"XMR": {div: 1, power: 1},
+		"ZEC": {div: 1, power: 1},
 	}
 	p, ok := tokenHashPower[s]
 	if !ok {
@@ -58,8 +58,10 @@ func CollectTokensMiningProfit(t watchers.TokenWatcher) ([]*TokenMainData, error
 			log.Printf("DEBUG :: cannot process tokenData %s, not in list\r\n", tokenData.Symbol)
 			continue
 		}
-		token.ProfitPerMonthUsd = calculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, tokenData.NetHashPerSec, tokenData.BlockReward, divider, tokenData.BlockTime)
-
+		netHashesPersec := int64(tokenData.NetHashPerSec)
+		token.ProfitPerMonthUsd = CalculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, float64(netHashesPersec), tokenData.BlockReward, divider, tokenData.BlockTime)
+		log.Printf("TOKEN :: %v, priceUSD: %v, hashes per Sec: %v, net hashes per sec : %v, block reward : %v, divider %v, blockTime : %v, PROFIT PER MONTH : %v\r\n",
+			token.Symbol, tokenData.PriceUSD, hashesPerSecond, netHashesPersec, tokenData.BlockReward, divider, tokenData.BlockTime, token.ProfitPerMonthUsd)
 		if token.Symbol == "ETH" {
 			rec.SaveProfitToken(&rec.TokenDb{
 				ID:              tokenData.CmcID,
@@ -75,18 +77,13 @@ func CollectTokensMiningProfit(t watchers.TokenWatcher) ([]*TokenMainData, error
 	}
 	return tokensForCalc, nil
 }
-func calculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) float64 {
+func CalculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) float64 {
 	currentHashingPower := hashesPerSecond / div
 	miningShare := currentHashingPower / (netHashesPerSecond + currentHashingPower)
-
-	minedPerDay := miningShare * 86400 / float64(blockTime) * (blockReward / div)
-
+	minedPerDay := miningShare * 86400 / float64(blockTime) * blockReward / div
 	powerCostPerDayUSD := (powerConsumption * 24) / 1000 * costPerkWh
-	returnPerDayUSD := (usd*minedPerDay - (usd * minedPerDay * 0.01)) - powerCostPerDayUSD
-
-	//profitRatio := (returnPerDayUSD / (powerCostPerDayUSD)) / 10
+	returnPerDayUSD := (usd*float64(minedPerDay) - (usd * float64(minedPerDay) * 0.01)) - powerCostPerDayUSD
 	perMonthUSD := float64(returnPerDayUSD * 30)
-	//marginPrice := perMonthUSD + (perMonthUSD * 0.05)
 	return perMonthUSD
 }
 

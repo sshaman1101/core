@@ -4,6 +4,7 @@ import (
 	"github.com/jinzhu/configor"
 	"github.com/sonm-io/core/accounts"
 	"github.com/sonm-io/core/insonmnia/logging"
+	"github.com/sonm-io/core/proto"
 )
 
 type marketConfig struct {
@@ -20,7 +21,15 @@ type stepsConfig struct {
 	StepForZEC float64 `yaml:"stepZEC"`
 	StepForXMR float64 `yaml:"stepXMR"`
 }
-type chargeOrdersConfig struct {
+type chargeOrdersETHConfig struct {
+	Start       float64 `yaml:"start"`
+	Destination float64 `yaml:"destination"`
+}
+type chargeOrdersZECConfig struct {
+	Start       float64 `yaml:"start"`
+	Destination float64 `yaml:"destination"`
+}
+type chargeOrdersXMRConfig struct {
 	Start       float64 `yaml:"start"`
 	Destination float64 `yaml:"destination"`
 }
@@ -35,19 +44,21 @@ type sensitivityConfig struct {
 	PartBuffer           float64 `yaml:"part_buffer"`
 }
 type otherParameters struct {
-	IdentityForBid int32 `yaml:"identityForBid"`
+	IdentityForBid sonm.IdentityLevel `yaml:"identityForBid"`
 }
 
 type Config struct {
-	Market          marketConfig        `required:"true" yaml:"market"`
-	PoolAddress     poolAddressesConfig `required:"false" yaml:"pool accounts"`
-	Distances       stepsConfig         `yaml:"stepForToken"`
-	ChargeInterval  chargeOrdersConfig  `yaml:"chargeOrdersInterval"`
-	Sensitivity     sensitivityConfig   `yaml:"sensitivity"`
-	Images          imageConfig         `yaml:"images"`
-	OtherParameters otherParameters     `yaml:"otherParameters"`
-	Eth             accounts.EthConfig  `yaml:"ethereum" required:"true"`
-	Log             logging.Config      `yaml:"log"`
+	Market            marketConfig          `required:"true" yaml:"market"`
+	PoolAddress       poolAddressesConfig   `required:"false" yaml:"pool accounts"`
+	Distances         stepsConfig           `yaml:"stepForToken"`
+	ChargeIntervalETH chargeOrdersETHConfig `yaml:"chargeOrdersInterval"`
+	ChargeIntervalZEC chargeOrdersZECConfig `yaml:"chargeOrdersZECInterval"`
+	ChargeIntervalXMR chargeOrdersXMRConfig `yaml:"chargeOrdersXMRInterval"`
+	Sensitivity       sensitivityConfig     `yaml:"sensitivity"`
+	Images            imageConfig           `yaml:"images"`
+	OtherParameters   otherParameters       `yaml:"otherParameters"`
+	Eth               accounts.EthConfig    `yaml:"ethereum" required:"true"`
+	Log               logging.Config        `yaml:"log"`
 }
 
 func NewConfig(path string) (*Config, error) {

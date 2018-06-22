@@ -10,6 +10,13 @@ import (
 )
 
 const (
+	driver     = "sqlite3"
+	dataSource = "./connor/tests/test.sq3"
+)
+
+var db *sqlx.DB
+
+const (
 	deals = `
 --	DROP TABLE IF EXISTS deals;
 	CREATE TABLE IF NOT EXISTS DEALS (
@@ -60,11 +67,7 @@ const (
 		TIME_UPDATE DATETIME NOT NULL
 	);
 `
-	driver     = "sqlite3"
-	dataSource = "insonmnia/arbBot/test.sq3"
 )
-
-var db *sqlx.DB
 
 type PoolDb struct {
 	PoolId                 string    `db:"POOL_ID"`
@@ -78,6 +81,7 @@ type PoolDb struct {
 	TimeStart              time.Time `db:"TIME_START"`
 	TimeUpdate             time.Time `db:"TIME_UPDATE"`
 }
+
 type TokenDb struct {
 	ID              string    `db:"TOKEN_ID"`
 	Name            string    `db:"NAME"`
@@ -89,6 +93,7 @@ type TokenDb struct {
 	ProfitSNM       float64   `db:"PROFIT_SNM"`
 	DateTime        time.Time `db:"DATE_TIME"`
 }
+
 type DealDb struct {
 	DealID       int64     `db:"ID"`
 	Status       int32     `db:"STATUS"`
@@ -99,6 +104,7 @@ type DealDb struct {
 	StartTime    time.Time `db:"START_TIME"`
 	LifeTime     time.Time `db:"LIFETIME"`
 }
+
 type OrderDb struct {
 	OrderID         int64     `db:"ID"`
 	Price           int64     `db:"PRICE"`

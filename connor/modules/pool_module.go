@@ -14,17 +14,16 @@ import (
 	"time"
 )
 
-const(
+const (
 	EthPool = "stratum+tcp://eth-eu1.nanopool.org:9999"
 )
-
 
 func DeployNewContainer(ctx context.Context, cfg *config.Config, deal *sonm.Deal, n sonm.TaskManagementClient, image string) (*sonm.StartTaskReply, error) {
 	fmt.Printf("deal = %#v, client = %#v, image = %s\n", deal, n, image)
 	env := map[string]string{
 		"ETH_POOL": EthPool,
-		"WALLET": cfg.PoolAddress.EthPoolAddr,
-		"WORKER": deal.Id.String(),
+		"WALLET":   cfg.PoolAddress.EthPoolAddr,
+		"WORKER":   deal.Id.String(),
 	}
 	container := &sonm.Container{
 		Image: image,

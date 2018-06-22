@@ -233,7 +233,7 @@ func ReinvoiceOrder(ctx context.Context, m sonm.MarketClient, price *sonm.Price,
 		ButterflyEffect: int32(OrderStatusReinvoice),
 		ActualStep:      0, // step copy
 	}); err != nil {
-		return errors.Errorf("cannot save reinvoice order to DB %v\r\n", order.GetId().Unwrap().String(), err)
+		return errors.Errorf("cannot save reinvoice order %s to DB: %v \r\n", order.GetId().Unwrap().String(), err)
 	}
 	log.Printf("REINVOICE Order ===> %v created (descendant: %v), price: %v, hashrate: %v",
 		order.GetId(), tag, order.GetPrice(), order.GetBenchmarks().GPUEthHashrate())
@@ -270,7 +270,7 @@ func ResponseActiveDeals(ctx context.Context, cfg *config.Config, dealsDb []*rec
 				fmt.Printf("Cannot get benchmarks from bid Order : %v\r\n", bidOrder.Id.Unwrap().Int64())
 				return err
 			}
-			ReinvoiceOrder(ctx, m, &sonm.Price{deal.GetPrice()}, bench, "Reinvoice", identityLvl)
+			ReinvoiceOrder(ctx, m, &sonm.Price{PerSecond: deal.GetPrice()}, bench, "Reinvoice", identityLvl)
 		} else {
 			fmt.Printf("For all received deals status :: DEPLOYED")
 		}
@@ -307,7 +307,7 @@ func OrdersProfitTracking(ctx context.Context, actualPrice *big.Int, ordersDb []
 				//actualPackPrice := big.NewInt(pricePerSecForPack.Int64())
 				change, err := GetChangePercent(pricePerSecForPack, orderPrice)
 				if err != nil {
-					return errors.Errorf("cannot get changes percent!", err)
+					return errors.Errorf("cannot get changes percent: %v", err)
 				}
 				log.Printf("Active Order Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v)change percent: %.2f %%\r\n", orderDb.OrderID, PriceToString(orderPrice), PriceToString(pricePerSecForPack), PriceToString(actualPrice), change)
 				commandPrice, err := CmpChangeOfPrice(change, 5)
@@ -318,7 +318,7 @@ func OrdersProfitTracking(ctx context.Context, actualPrice *big.Int, ordersDb []
 						return err
 					}
 					tag := strconv.Itoa(int(orderDb.OrderID))
-					ReinvoiceOrder(ctx, m, &sonm.Price{sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice OldOrder: "+tag, identityLvl)
+					ReinvoiceOrder(ctx, m, &sonm.Price{PerSecond: sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice OldOrder: "+tag, identityLvl)
 					m.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
 				}
 			} else {
@@ -337,7 +337,7 @@ func DealsProfitTracking(ctx context.Context, actualPrice *big.Int, dealClient s
 	for _, d := range dealsDb {
 		actualPriceClone, err := ClonePrice(actualPrice)
 		if err != nil {
-			return errors.Errorf("Cannot get clone price!", err)
+			return errors.Errorf("Cannot get clone price: %v", err)
 		}
 
 		dealOnMarket, err := dealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(d.DealID).Bytes()})
@@ -357,7 +357,7 @@ func DealsProfitTracking(ctx context.Context, actualPrice *big.Int, dealClient s
 		if actualPriceForPack.Cmp(dealPrice) >= 1 {
 			changePercent, err := GetChangePercent(actualPriceForPack, dealPrice)
 			if err != nil {
-				return errors.Errorf("cannot get change percent from deal!", err)
+				return errors.Errorf("cannot get change percent from deal: %v", err)
 			}
 			log.Printf("Create CR ===> Active Deal Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v) change percent: %.2f %%\r\n",
 				dealOnMarket.Deal.Id.String(), PriceToString(dealPrice), PriceToString(actualPriceForPack), PriceToString(actualPrice), changePercent)

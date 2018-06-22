@@ -19,11 +19,11 @@ func ClonePrice(def *big.Int) (*big.Int, error) {
 func GetChangePercent(actualPriceForPack *big.Int, dealPrice *big.Int) (float64, error) {
 	newClone, err := ClonePrice(actualPriceForPack)
 	if err != nil {
-		return 0, errors.Errorf("cannot get clone price ", err)
+		return 0, errors.Errorf("cannot get clone price %v", err)
 	}
 	dealClone, err := ClonePrice(dealPrice)
 	if err != nil {
-		return 0, errors.Errorf("cannot get clone price ", err)
+		return 0, errors.Errorf("cannot get clone price %v", err)
 	}
 	div := big.NewFloat(params.Ether)
 

@@ -322,8 +322,8 @@ func GetLastActualStepFromDb() (float64, error) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		return max, nil
 		defer rows.Close()
+		return max, nil
 	}
 	return 0, nil
 }

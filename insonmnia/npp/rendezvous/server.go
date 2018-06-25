@@ -39,6 +39,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"fmt"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/hashicorp/memberlist"
 	"github.com/sonm-io/core/insonmnia/auth"
 	"github.com/sonm-io/core/insonmnia/npp/cluster"
 	"github.com/sonm-io/core/insonmnia/npp/nppc"
@@ -57,10 +61,15 @@ type deleter func()
 
 type peerCandidate struct {
 	Peer
-	C chan<- Peer
+	C chan<- peerOrError
 }
 
-type meeting struct {
+type peerOrError struct {
+	Peer Peer
+	Err  error
+}
+
+type meetingRoom struct {
 	mu sync.Mutex
 	// We allow multiple clients to be waited for servers.
 	clients map[PeerID]peerCandidate
@@ -69,26 +78,26 @@ type meeting struct {
 	servers map[PeerID]peerCandidate
 }
 
-func newMeeting() *meeting {
-	return &meeting{
+func newMeeting() *meetingRoom {
+	return &meetingRoom{
 		servers: map[PeerID]peerCandidate{},
 		clients: map[PeerID]peerCandidate{},
 	}
 }
 
-func (m *meeting) addServer(peer Peer, c chan<- Peer) {
+func (m *meetingRoom) addServer(peer Peer, c chan<- peerOrError) {
 	m.servers[peer.ID] = peerCandidate{Peer: peer, C: c}
 }
 
-func (m *meeting) addClient(peer Peer, c chan<- Peer) {
+func (m *meetingRoom) addClient(peer Peer, c chan<- peerOrError) {
 	m.clients[peer.ID] = peerCandidate{Peer: peer, C: c}
 }
 
-func (m *meeting) randomServer() *peerCandidate {
+func (m *meetingRoom) randomServer() *peerCandidate {
 	return randomPeerCandidate(m.servers)
 }
 
-func (m *meeting) randomClient() *peerCandidate {
+func (m *meetingRoom) randomClient() *peerCandidate {
 	return randomPeerCandidate(m.clients)
 }
 
@@ -116,7 +125,7 @@ type Server struct {
 	resolver resolver
 
 	mu        sync.Mutex
-	rv        map[nppc.ResourceID]*meeting
+	rv        map[nppc.ResourceID]*meetingRoom
 	continuum *cluster.Continuum
 	cluster   *memberlist.Memberlist
 	port      netutil.Port
@@ -150,7 +159,7 @@ func NewServer(cfg ServerConfig, options ...Option) (*Server, error) {
 			xgrpc.VerifyInterceptor(),
 		),
 		resolver:  newExternalResolver(""),
-		rv:        map[nppc.ResourceID]*meeting{},
+		rv:        map[nppc.ResourceID]*meetingRoom{},
 		continuum: cluster.NewContinuum(),
 		port:      port,
 	}
@@ -174,10 +183,8 @@ func (m *Server) Discover(ctx context.Context, in *sonm.HandshakeRequest) (*sonm
 func (m *Server) NotifyJoin(node *memberlist.Node) {
 	m.log.Info("node has joined to the cluster", zap.String("node_name", node.Name),
 		zap.String("node_addr", node.Address()))
-
-	m.continuum.Add(m.formatEndpoint(node.Addr), 1)
-
-	// clean up discarded addresses
+	discardedAddrs := m.continuum.Add(m.formatEndpoint(node.Addr), 1)
+	m.dropDiscardedPeers(discardedAddrs)
 }
 
 func (m *Server) NotifyLeave(node *memberlist.Node) {
@@ -185,8 +192,8 @@ func (m *Server) NotifyLeave(node *memberlist.Node) {
 		zap.String("node_addr", node.Address()))
 
 	m.continuum.Remove(m.formatEndpoint(node.Addr))
-
-	// clean up discarded addresses
+	discardedAddrs := m.continuum.Add(m.formatEndpoint(node.Addr), 1)
+	m.dropDiscardedPeers(discardedAddrs)
 }
 
 func (m *Server) NotifyUpdate(node *memberlist.Node) {
@@ -209,6 +216,12 @@ func (m *Server) Resolve(ctx context.Context, request *sonm.ConnectRequest) (*so
 	}
 	m.log.Info("resolving remote peer", zap.Stringer("id", id))
 
+	if _, ok := m.continuum.Get(common.BytesToAddress(request.ID)); !ok {
+		return nil, errWrongNode()
+	}
+
+	m.log.Info("resolving remote peer", zap.String("id", request.ID))
+
 	peerHandle := NewPeer(*peerInfo, request.PrivateAddrs)
 
 	c, deleter := m.addServerWatch(id, peerHandle)
@@ -218,12 +231,15 @@ func (m *Server) Resolve(ctx context.Context, request *sonm.ConnectRequest) (*so
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case p := <-c:
+		if p.Err != nil {
+			return nil, status.Errorf(codes.Aborted, p.Err.Error())
+		}
 		m.log.Info("providing remote server endpoint(s)",
-			zap.Stringer("id", id),
-			zap.Stringer("public_addr", p.Addr),
-			zap.Any("private_addrs", p.privateAddrs),
+			zap.String("id", id),
+			zap.Stringer("public_addr", p.Peer.Addr),
+			zap.Any("private_addrs", p.Peer.privateAddrs),
 		)
-		return m.newReply(p)
+		return m.newReply(p.Peer)
 	}
 }
 
@@ -264,28 +280,37 @@ func (m *Server) Publish(ctx context.Context, request *sonm.PublishRequest) (*so
 		Protocol: request.Protocol,
 		Addr:     *ethAddr,
 	}
-	m.log.Info("publishing remote peer", zap.String("id", id.String()))
+	if _, ok := m.continuum.Get(*ethAddr); !ok {
+		return nil, errWrongNode()
+	}
+
+	m.log.Info("publishing remote peer", zap.String("id", ethAddr.String()))
 
 	peerHandle := NewPeer(*peerInfo, request.PrivateAddrs)
 
 	c, deleter := m.newClientWatch(id, peerHandle)
 	defer deleter()
 
+	m.continuum.Track(*ethAddr)
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case p := <-c:
+		if p.Err != nil {
+			return nil, status.Errorf(codes.Aborted, p.Err.Error())
+		}
 		m.log.Info("providing remote client endpoint(s)",
-			zap.Stringer("id", id),
-			zap.Stringer("public_addr", p.Addr),
-			zap.Any("private_addrs", p.privateAddrs),
+			zap.String("id", id),
+			zap.Stringer("public_addr", p.Peer.Addr),
+			zap.Any("private_addrs", p.Peer.privateAddrs),
 		)
-		return m.newReply(p)
+		return m.newReply(p.Peer)
 	}
 }
 
-func (m *Server) addServerWatch(id nppc.ResourceID, peer Peer) (<-chan Peer, deleter) {
-	c := make(chan Peer, 1)
+func (m *Server) addServerWatch(id nppc.ResourceID, peer Peer) (<-chan peerOrError, deleter) {
+	c := make(chan peerOrError, 1)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -294,8 +319,8 @@ func (m *Server) addServerWatch(id nppc.ResourceID, peer Peer) (<-chan Peer, del
 	if ok {
 		// Notify both sides immediately if there is match between candidates.
 		if server := meeting.randomServer(); server != nil {
-			c <- server.Peer
-			server.C <- peer
+			c <- peerOrError{Peer: server.Peer}
+			server.C <- peerOrError{Peer: peer}
 		} else {
 			meeting.addClient(peer, c)
 		}
@@ -308,8 +333,8 @@ func (m *Server) addServerWatch(id nppc.ResourceID, peer Peer) (<-chan Peer, del
 	return c, func() { m.removeServerWatch(id, peer) }
 }
 
-func (m *Server) newClientWatch(id nppc.ResourceID, peer Peer) (<-chan Peer, deleter) {
-	c := make(chan Peer, 1)
+func (m *Server) newClientWatch(id nppc.ResourceID, peer Peer) (<-chan peerOrError, deleter) {
+	c := make(chan peerOrError, 1)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -317,8 +342,8 @@ func (m *Server) newClientWatch(id nppc.ResourceID, peer Peer) (<-chan Peer, del
 	meeting, ok := m.rv[id]
 	if ok {
 		if client := meeting.randomClient(); client != nil {
-			c <- client.Peer
-			client.C <- peer
+			c <- peerOrError{Peer: client.Peer}
+			client.C <- peerOrError{Peer: peer}
 		} else {
 			meeting.addServer(peer, c)
 		}
@@ -355,7 +380,7 @@ func (m *Server) removeServerWatch(id nppc.ResourceID, peer Peer) {
 	m.maybeCleanMeeting(id, candidates)
 }
 
-func (m *Server) maybeCleanMeeting(id nppc.ResourceID, candidates *meeting) {
+func (m *Server) maybeCleanMeeting(id nppc.ResourceID, candidates *meetingRoom) {
 	if candidates == nil {
 		return
 	}
@@ -457,6 +482,25 @@ func errNoPeerInfo() error {
 	return errors.New("no peer info provided")
 }
 
+func (m *Server) dropDiscardedPeers(discardedAddrs []common.Address) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, addr := range discardedAddrs {
+		if room, ok := m.rv[addr.Hex()]; ok {
+			for _, server := range room.servers {
+				server.C <- peerOrError{Err: errors.New("server dropped due to cluster reconfiguration")}
+			}
+			for _, client := range room.clients {
+				client.C <- peerOrError{Err: errors.New("client dropped due to cluster reconfiguration")}
+			}
+		}
+	}
+}
+
 func errPeerNotFound() error {
 	return status.Errorf(codes.NotFound, "peer not found")
+}
+
+func errWrongNode() error {
+	return status.Errorf(codes.Aborted, "peer connected to wrong node")
 }

@@ -7,31 +7,19 @@ import (
 	"sync"
 )
 
+type ReturningData struct {
+	PoolData        *PoolData
+	PoolWorkersData *ReportedHashrate
+}
 type PoolData struct {
 	Data struct {
-		Account            string `json:"account"`
-		UnconfirmedBalance string `json:"unconfirmed_balance"`
-		Balance            string `json:"balance"`
-		Hashrate           string `json:"hashrate"`
-		AvgHashrate        struct {
+		Balance  string `json:"balance"`
+		Hashrate string `json:"hashrate"`
+		AvgHashrate struct {
 			H1  string `json:"h1"`
 			H24 string `json:"h24"`
 		} `json:"avgHashrate"`
-		Workers []PoolWorker `json:"workers"`
 	} `json:"data"`
-}
-
-type PoolWorker struct {
-	ID        string `json:"id"`
-	UID       int    `json:"uid"`
-	Hashrate  string `json:"hashrate"`
-	Lastshare int    `json:"lastshare"`
-	Rating    int    `json:"rating"`
-	H1        string `json:"h1"`
-	H3        string `json:"h3"`
-	H6        string `json:"h6"`
-	H12       string `json:"h12"`
-	H24       string `json:"h24"`
 }
 
 type ReportedHashrate struct {
@@ -48,18 +36,18 @@ type nanopoolWatcher struct {
 	mu   sync.Mutex
 	url  string
 	addr []string
-	data map[string]*ReportedHashrate
+	data map[string]*ReturningData
 }
 
 func NewPoolWatcher(url string, addr []string) PoolWatcher {
 	return &nanopoolWatcher{
 		url:  url,
 		addr: addr,
-		data: make(map[string]*ReportedHashrate),
+		data: make(map[string]*ReturningData),
 	}
 }
 
-func (p *nanopoolWatcher) GetData(addr string) (*ReportedHashrate, error) {
+func (p *nanopoolWatcher) GetData(addr string) (*ReturningData, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -85,12 +73,12 @@ func (p *nanopoolWatcher) Update(ctx context.Context) error {
 	return nil
 }
 
-func (p *nanopoolWatcher) getPoolData(addr string, url string) (*ReportedHashrate, error) {
+func (p *nanopoolWatcher) getPoolData(addr string, url string) (*ReturningData, error) {
 	body, err := fetchBody(url + addr)
 	if err != nil {
 		return nil, err
 	}
-	forPool := &ReportedHashrate{}
+	forPool := &ReturningData{}
 	err = json.Unmarshal(body, forPool)
 	if err != nil {
 		return nil, err

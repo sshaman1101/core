@@ -12,16 +12,16 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"fmt"
 
-	w "github.com/sonm-io/core/connor/watchers"
+	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/connor/database"
 )
 
 const (
-	coinMarketCapTiker    = "https://api.coinmarketcap.com/v1/ticker/"
-	coinMarketCapSnmTiker = coinMarketCapTiker + "sonm/"
-	cryptoCompareCoinData = "https://www.cryptocompare.com/api/data/coinsnapshotfullbyid/?id="
-	poolReportedHashRate  = "http://178.62.225.107:3000/v1/eth/reportedhashrates/"
-	poolAverageHashRate   = "http://178.62.225.107:3000/v1/eth/avghashrateworkers/"
+	coinMarketCapTicker     = "https://api.coinmarketcap.com/v1/ticker/"
+	coinMarketCapSonmTicker = coinMarketCapTicker + "sonm/"
+	cryptoCompareCoinData   = "https://www.cryptocompare.com/api/data/coinsnapshotfullbyid/?id="
+	poolReportedHashRate    = "http://178.62.225.107:3000/v1/eth/reportedhashrates/"
+	poolAverageHashRate     = "http://178.62.225.107:3000/v1/eth/avghashrateworkers/"
 )
 
 const (
@@ -90,10 +90,10 @@ func (c *Connor) Serve(ctx context.Context) error {
 	poolInit := time.NewTimer(900 * time.Second)
 	defer poolInit.Stop()
 
-	snm := w.NewSNMPriceWatcher(coinMarketCapSnmTiker)
-	token := w.NewTokenPriceWatcher(coinMarketCapTiker, cryptoCompareCoinData)
-	reportedPool := w.NewPoolWatcher(poolReportedHashRate, []string{c.cfg.PoolAddress.EthPoolAddr})
-	avgPool := w.NewPoolWatcher(poolAverageHashRate, []string{c.cfg.PoolAddress.EthPoolAddr + "/1"})
+	snm := watchers.NewSNMPriceWatcher(coinMarketCapSonmTicker)
+	token := watchers.NewTokenPriceWatcher(coinMarketCapTicker, cryptoCompareCoinData)
+	reportedPool := watchers.NewPoolWatcher(poolReportedHashRate, []string{c.cfg.PoolAddress.EthPoolAddr})
+	avgPool := watchers.NewPoolWatcher(poolAverageHashRate, []string{c.cfg.PoolAddress.EthPoolAddr + "/1"})
 
 	if err = snm.Update(ctx); err != nil {
 		return fmt.Errorf("cannot update snm data: %v", err)
@@ -108,7 +108,9 @@ func (c *Connor) Serve(ctx context.Context) error {
 		return fmt.Errorf("cannot update avgPool data: %v", err)
 	}
 
-	m := NewModules(c)
+	profitModule := NewProfitableModules(c)
+	poolModule := NewPoolModules(c)
+	traderModule := NewTraderModules(c, poolModule, profitModule)
 
 	for {
 		select {
@@ -121,13 +123,13 @@ func (c *Connor) Serve(ctx context.Context) error {
 			if err = token.Update(ctx); err != nil {
 				return fmt.Errorf("cannot update TOKEN data: %v\n", err)
 			}
-			go m.CollectTokensMiningProfit(token)
+			go profitModule.CollectTokensMiningProfit(token)
 		case <-tradeUpdate.C:
-			m.TradeObserve(ctx, c, reportedPool, token, c.cfg)
+			traderModule.TradeObserve(ctx, reportedPool, token, c.cfg)
 		case <-poolInit.C:
-			m.SavePoolDataToDb(ctx, reportedPool, c.cfg.PoolAddress.EthPoolAddr)
+			poolModule.SavePoolDataToDb(ctx, reportedPool, c.cfg.PoolAddress.EthPoolAddr)
 		case <-poolTrack.C:
-			m.PoolTrack(ctx, reportedPool, avgPool, c.cfg.PoolAddress.EthPoolAddr, c.DealClient)
+			poolModule.PoolHashrateTracking(ctx, reportedPool, avgPool, c.cfg.PoolAddress.EthPoolAddr)
 		}
 	}
 }

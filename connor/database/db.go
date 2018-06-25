@@ -5,6 +5,7 @@ import (
 	"log"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+	"time"
 )
 
 type Database struct {
@@ -96,8 +97,8 @@ func (d *Database) UpdateDealInDB(id int64, deployStatus int32) error {
 	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
-func (d *Database) UpdateStatusPoolDB(id string, badGuy int32) error {
-	result, err := d.connect.Exec(updateStatusPoolDB, badGuy, id)
+func (d *Database) UpdateWorkerStatusInPoolDB(id string, badGuy int32, timeUpdate time.Time) error {
+	result, err := d.connect.Exec(updateStatusPoolDB, badGuy, timeUpdate, id)
 	if err != nil {
 		return err
 	}
@@ -108,8 +109,8 @@ func (d *Database) UpdateStatusPoolDB(id string, badGuy int32) error {
 	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
-func (d *Database) UpdateReportedHashratePoolDB(id string, reportedHashrate float64) error {
-	result, err := d.connect.Exec(updateReportedHashrate, reportedHashrate, id)
+func (d *Database) UpdateReportedHashratePoolDB(id string, reportedHashrate float64, timeUpdate time.Time) error {
+	result, err := d.connect.Exec(updateReportedHashrate, reportedHashrate, timeUpdate, id)
 	if err != nil {
 		return err
 	}
@@ -120,8 +121,8 @@ func (d *Database) UpdateReportedHashratePoolDB(id string, reportedHashrate floa
 	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
-func (d *Database) UpdateAvgPoolDB(id string, avgHashrate float64) error {
-	result, err := d.connect.Exec(updateAvgPool, avgHashrate, id)
+func (d *Database) UpdateAvgPoolDB(id string, avgHashrate float64, timeUpdate time.Time) error {
+	result, err := d.connect.Exec(updateAvgPool, avgHashrate, timeUpdate, id)
 	if err != nil {
 		return err
 	}

@@ -22,12 +22,7 @@ type TokenWatcher interface {
 
 type PoolWatcher interface {
 	Watcher
-	GetData(addr string) (*ReportedHashrate, error)
-}
-
-type CurBTCWatcher interface {
-	Watcher
-	GetCurrencyData(symbol string) (*CurrencyData, error)
+	GetData(addr string) (*ReturningData, error)
 }
 
 type BudgetWatcher interface {

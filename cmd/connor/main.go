@@ -14,7 +14,7 @@ var (
 )
 
 func main() {
-	cmd.NewCmd("node", appVersion, &configFlag, &versionFlag, run).Execute()
+	cmd.NewCmd("connor", appVersion, &configFlag, &versionFlag, run).Execute()
 }
 
 func run() error {
@@ -35,7 +35,7 @@ func run() error {
 	}
 
 	if err := c.Serve(ctx); err != nil {
-		return fmt.Errorf("node termination: %s", err)
+		return fmt.Errorf("termination: %s", err)
 	}
 
 	return nil

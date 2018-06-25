@@ -23,7 +23,6 @@ const (
 	hashes       = 1000000
 	daysPerMonth = 30
 	secsPerDay   = 86400
-	partCharge   = 0.5 //soon redo it
 )
 
 type PoolModule struct {
@@ -243,6 +242,7 @@ const (
 	OrderStatusReinvoice OrderStatus = 4
 )
 
+// 
 func (t *TraderModule) getTokenConfiguration(symbol string, cfg *Config) (float64, float64, float64, error) {
 	switch symbol {
 	case "ETH":
@@ -255,13 +255,14 @@ func (t *TraderModule) getTokenConfiguration(symbol string, cfg *Config) (float6
 	return 0, 0, 0, nil
 }
 
-func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, marketClient sonm.MarketClient, token watchers.TokenWatcher, snm watchers.PriceWatcher, balanceReply *sonm.BalanceReply, cfg *Config, ethAddr *sonm.EthAddress) error {
+func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, token watchers.TokenWatcher, snm watchers.PriceWatcher, balanceReply *sonm.BalanceReply) error {
 	t.c.db.CreateOrderDB()
-	start, destination, step, err := t.getTokenConfiguration(symbol, cfg)
+	start, destination, step, err := t.getTokenConfiguration(symbol, t.c.cfg)
 	if err != nil {
 		log.Printf("cannot get token configuraton %v", err)
 		return err
 	}
+
 	count, err := t.c.db.GetCountFromDB()
 	if err != nil {
 		log.Printf("Cannot get count from DB: %v", err)
@@ -286,7 +287,7 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, mark
 		log.Printf("Cannot get profit for tokens: %v\r\n", err)
 		return err
 	}
-	limitChargeInSNM := t.profit.LimitChargeSNM(balanceReply.GetSideBalance().Unwrap(), partCharge)
+	limitChargeInSNM := t.profit.LimitChargeSNM(balanceReply.GetSideBalance().Unwrap(), t.c.cfg.Sensitivity.PartCharge)
 	limitChargeInSNMClone := big.NewInt(0).Set(limitChargeInSNM)
 	limitChargeInUSD := t.profit.ConvertingToUSDBalance(limitChargeInSNMClone, snm.GetPrice())
 
@@ -296,7 +297,7 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, mark
 		return err
 	}
 
-	pricePackMhInUSDPerMonth := mhashForToken * (pricePerMonthUSD * cfg.Sensitivity.MarginAccounting)
+	pricePackMhInUSDPerMonth := mhashForToken * (pricePerMonthUSD * t.c.cfg.Sensitivity.MarginAccounting)
 	sumOrdersPerMonth := limitChargeInUSD / pricePackMhInUSDPerMonth
 
 	log.Printf("CHARGE %v ORDERS ONCE: \r\n"+
@@ -304,19 +305,19 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, mark
 		"Limit for Charge		   :: %.2f $ (%.8v SNM)\r\n"+
 		"Price Order Per Month	   :: %f $\r\n"+
 		"Default step			   :: %.2f MH/s\r\n"+
-		"You can create 			   :: %v orders ranging from: %.2f Mh/s - %.2f Mh/s with step: %.2f\r\n"+
+		"You can create 		   :: %v orders ranging from: %.2f Mh/s - %.2f Mh/s with step: %.2f\r\n"+
 		"START CHARGE ..................................",
 		symbol, pricePerMonthUSD, pricePerSecMh, limitChargeInUSD, t.PriceToString(limitChargeInSNM), pricePackMhInUSDPerMonth, mhashForToken, int(sumOrdersPerMonth),
 		start, destination, step)
-	os.Exit(1)
+
 	for i := 0; i < int(sumOrdersPerMonth); i++ {
 		if mhashForToken >= destination {
-			fmt.Printf("Charge is finished cause reached the limit %.2f Mh/s\r\n", cfg.ChargeIntervalETH.Destination)
+			fmt.Printf("Charge is finished cause reached the limit %.2f Mh/s\r\n", t.c.cfg.ChargeIntervalETH.Destination)
 			break
 		}
 		pricePerSecPack := t.FloatToBigInt(mhashForToken * pricePerSecMh)
 		log.Printf("Price :: %v\r\n", t.PriceToString(pricePerSecPack))
-		mhashForToken, err = t.ChargeOrders(ctx, cfg, marketClient, symbol, pricePerSecPack, step, mhashForToken, ethAddr)
+		mhashForToken, err = t.ChargeOrders(ctx, t.c.cfg, t.c.Market, symbol, pricePerSecPack, step, mhashForToken)
 		if err != nil {
 			return fmt.Errorf("Cannot charging market! %v\r\n", err)
 		}
@@ -327,13 +328,14 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, mark
 
 // Prepare price and Map depends on token symbol.
 // Create orders to the market, until the budget is over.
-func (t *TraderModule) ChargeOrders(ctx context.Context, cfg *Config, client sonm.MarketClient, symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64, ethAddr *sonm.EthAddress) (float64, error) {
+func (t *TraderModule) ChargeOrders(ctx context.Context, cfg *Config, client sonm.MarketClient,
+	symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64) (float64, error) {
 	requiredHashRate := uint64(buyMghash * hashes)
 	benchmarks, err := t.getBenchmarksForSymbol(symbol, uint64(requiredHashRate))
 	if err != nil {
 		return 0, err
 	}
-	buyMghash, err = t.CreateOrderOnMarketStep(ctx, cfg, client, step, benchmarks, buyMghash, priceForHashPerSec, ethAddr)
+	buyMghash, err = t.CreateOrderOnMarketStep(ctx, cfg, client, step, benchmarks, buyMghash, priceForHashPerSec)
 	if err != nil {
 		return 0, err
 	}
@@ -341,15 +343,16 @@ func (t *TraderModule) ChargeOrders(ctx context.Context, cfg *Config, client son
 }
 
 // Create order on market depends on token.
-func (t *TraderModule) CreateOrderOnMarketStep(ctx context.Context, cfg *Config, market sonm.MarketClient, step float64, benchmarks map[string]uint64, buyMgHash float64, price *big.Int, ethAddr *sonm.EthAddress) (float64, error) {
+func (t *TraderModule) CreateOrderOnMarketStep(ctx context.Context, cfg *Config,
+	market sonm.MarketClient, step float64, benchmarks map[string]uint64,
+	buyMgHash float64, price *big.Int) (float64, error) {
 	actOrder, err := market.CreateOrder(ctx, &sonm.BidOrder{
 		Tag:      "Connor bot",
 		Duration: &sonm.Duration{},
 		Price: &sonm.Price{
 			PerSecond: sonm.NewBigInt(price),
 		},
-		Blacklist: ethAddr,
-		Identity:  cfg.OtherParameters.IdentityForBid,
+		Identity: cfg.OtherParameters.IdentityForBid,
 		Resources: &sonm.BidResources{
 			Benchmarks: benchmarks,
 			Network: &sonm.BidNetwork{
@@ -591,8 +594,6 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 		actualPriceForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(int64(pack)))
 		dealPrice := dealOnMarket.Deal.Price.Unwrap()
 		log.Printf("Deal id::%v (Bid:: %v) price :: %v, actual price for pack :: %v (hashes %v)\r\n", dealOnMarket.Deal.Id.String(), bidOrder.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), pack)
-		os.Exit(1)
-
 		if actualPriceForPack.Cmp(dealPrice) >= 1 {
 			changePercent, err := t.GetChangePercent(actualPriceForPack, dealPrice)
 			if err != nil {
@@ -623,7 +624,6 @@ func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config)
 	ordersDb, err := t.c.db.GetOrdersFromDB()
 	if err != nil {
 		fmt.Printf("Cannot get orders from DB %v\r\n", err)
-		os.Exit(1)
 	}
 	for _, o := range ordersDb {
 		subtract := time.Now().AddDate(0, 0, -o.StartTime.Day()).Day()

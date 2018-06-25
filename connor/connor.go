@@ -15,6 +15,7 @@ import (
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"go.uber.org/zap"
+	"os"
 )
 
 const (

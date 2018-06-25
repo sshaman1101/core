@@ -8,7 +8,7 @@ import (
 )
 
 type marketConfig struct {
-	Endpoint string `required:"true" yaml:"endpoint"`
+	Endpoint string `yaml:"endpoint" required:"true"`
 }
 
 type poolAddressesConfig struct {
@@ -48,8 +48,8 @@ type otherParameters struct {
 }
 
 type Config struct {
-	Market            marketConfig          `required:"true" yaml:"market"`
-	PoolAddress       poolAddressesConfig   `required:"false" yaml:"pool accounts"`
+	Market            marketConfig          `yaml:"market" required:"true"`
+	PoolAddress       poolAddressesConfig   `yaml:"pool accounts" required:"false"`
 	Distances         stepsConfig           `yaml:"stepForToken"`
 	ChargeIntervalETH chargeOrdersETHConfig `yaml:"chargeOrdersInterval"`
 	ChargeIntervalZEC chargeOrdersZECConfig `yaml:"chargeOrdersZECInterval"`

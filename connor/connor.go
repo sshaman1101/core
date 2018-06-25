@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"google.golang.org/grpc/credentials"
 	"github.com/sonm-io/core/util"
-	"log"
 	"github.com/sonm-io/core/proto"
 	"time"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -14,6 +13,8 @@ import (
 
 	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/connor/database"
+	"github.com/noxiouz/zapctx/ctxlog"
+	"go.uber.org/zap"
 )
 
 const (
@@ -71,9 +72,14 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 		return nil, fmt.Errorf("Cannot load balanceReply %v\r\n", err)
 	}
 
-	log.Printf(" >>>>> Balance 			   :: Live: %v, Side %v SNM \r\n", balanceReply.GetLiveBalance().Unwrap().String(), balanceReply.GetSideBalance().ToPriceString())
-	log.Printf(" >>>>> Eth Node Address    :: %s\r\n", cfg.Market.Endpoint)
-	log.Printf(" >>>>> Public Key address  :: %v\r\n", crypto.PubkeyToAddress(key.PublicKey).Hex())
+	logger := ctxlog.GetLogger(ctx)
+
+	logger.Info("Config",
+		zap.String("Eth Node address", cfg.Market.Endpoint),
+		zap.String("key", crypto.PubkeyToAddress(key.PublicKey).String()))
+	logger.Info("Balance",
+		zap.String("live", balanceReply.GetLiveBalance().Unwrap().String()),
+		zap.String("Side", balanceReply.GetSideBalance().ToPriceString()))
 
 	return connor, nil
 }

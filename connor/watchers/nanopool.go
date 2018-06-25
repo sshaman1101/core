@@ -13,8 +13,8 @@ type ReturningData struct {
 }
 type PoolData struct {
 	Data struct {
-		Balance  string `json:"balance"`
-		Hashrate string `json:"hashrate"`
+		Balance     string `json:"balance"`
+		Hashrate    string `json:"hashrate"`
 		AvgHashrate struct {
 			H1  string `json:"h1"`
 			H24 string `json:"h24"`

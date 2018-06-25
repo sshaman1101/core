@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"github.com/sonm-io/core/connor"
-	"github.com/sonm-io/core/cmd"
 	"fmt"
+	"github.com/sonm-io/core/cmd"
+	"github.com/sonm-io/core/connor"
 )
 
 var (

@@ -2,9 +2,9 @@ package database
 
 import (
 	"fmt"
-	"log"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+	"log"
 	"time"
 )
 

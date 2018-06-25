@@ -50,13 +50,13 @@ type otherParameters struct {
 type Config struct {
 	Market            marketConfig          `yaml:"market" required:"true"`
 	PoolAddress       poolAddressesConfig   `yaml:"pool accounts" required:"false"`
-	Distances         stepsConfig           `yaml:"stepForToken"`
-	ChargeIntervalETH chargeOrdersETHConfig `yaml:"chargeOrdersInterval"`
-	ChargeIntervalZEC chargeOrdersZECConfig `yaml:"chargeOrdersZECInterval"`
-	ChargeIntervalXMR chargeOrdersXMRConfig `yaml:"chargeOrdersXMRInterval"`
+	Distances         stepsConfig           `yaml:"step for token"`
+	ChargeIntervalETH chargeOrdersETHConfig `yaml:"charge orders interval"`
+	ChargeIntervalZEC chargeOrdersZECConfig `yaml:"charge orders ZEC interval"`
+	ChargeIntervalXMR chargeOrdersXMRConfig `yaml:"charge orders XMR interval"`
 	Sensitivity       sensitivityConfig     `yaml:"sensitivity"`
 	Images            imageConfig           `yaml:"images"`
-	OtherParameters   otherParameters       `yaml:"otherParameters"`
+	OtherParameters   otherParameters       `yaml:"other parameters"`
 	Eth               accounts.EthConfig    `yaml:"ethereum" required:"true"`
 	Log               logging.Config        `yaml:"log"`
 }

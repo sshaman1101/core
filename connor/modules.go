@@ -3,6 +3,8 @@ package connor
 import (
 	"context"
 	"fmt"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/proto"
 	"log"
@@ -10,8 +12,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/sonm-io/core/connor/database"
 )
 
 // POOL MODULE
@@ -132,9 +132,8 @@ func (m *PoolModule) UpdateMainData(ctx context.Context, poolRHData watchers.Poo
 		fmt.Printf("cannot get worker from pool DB")
 		return err
 	}
-	// TODO: Bad guy detected :: if iterations < 4 && badguy <5
 	for _, w := range workers {
-		if w.Iterations < numberOfIterationsForH1 {
+		if w.Iterations < numberOfIterationsForH1 && w.BadGuy < numberOfLives {
 			if err = m.UpdateRHPoolData(ctx, poolRHData, addr); err != nil {
 				log.Printf("cannot update RH pool data!")
 				return err
@@ -177,9 +176,9 @@ func (m *PoolModule) PoolHashrateTracking(ctx context.Context, poolRHData watche
 		iteration := int32(w.Iterations + 1)
 		bidHashrate := bidOrder.GetBenchmarks().GPUEthHashrate()
 
-		if iteration < numberOfIterationsForH1 {
+		if iteration < numberOfIterationsForH1 && w.BadGuy < numberOfLives {
 			log.Printf("ITERATION :: %v for worker :: %v !\r\n", iteration, w.WorkerID)
-			workerReportedHashrate := uint64(w.WorkerReportedHashrate * 1000000)
+			workerReportedHashrate := uint64(w.WorkerReportedHashrate * hashes)
 			if workerReportedHashrate < bidHashrate {
 				log.Printf("ID :: %v ==> wRH %v < deal (bid) hashrate %v ==> PID! \r\n", w.WorkerID, workerReportedHashrate, bidHashrate)
 				if w.BadGuy < numberOfLives {
@@ -831,10 +830,10 @@ func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([
 			log.Printf("DEBUG :: cannot process tokenData %s, not in list\r\n", tokenData.Symbol)
 			continue
 		}
-		netHashesPersec := int64(tokenData.NetHashPerSec)
-		token.ProfitPerMonthUsd = p.CalculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, float64(netHashesPersec), tokenData.BlockReward, divider, tokenData.BlockTime)
+		netHashesPerSec := int64(tokenData.NetHashPerSec)
+		token.ProfitPerMonthUsd = p.CalculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, float64(netHashesPerSec), tokenData.BlockReward, divider, tokenData.BlockTime)
 		log.Printf("TOKEN :: %v, priceUSD: %v, hashes per Sec: %v, net hashes per sec : %v, block reward : %v, divider %v, blockTime : %v, PROFIT PER MONTH : %v\r\n",
-			token.Symbol, tokenData.PriceUSD, hashesPerSecond, netHashesPersec, tokenData.BlockReward, divider, tokenData.BlockTime, token.ProfitPerMonthUsd)
+			token.Symbol, tokenData.PriceUSD, hashesPerSecond, netHashesPerSec, tokenData.BlockReward, divider, tokenData.BlockTime, token.ProfitPerMonthUsd)
 		if token.Symbol == "ETH" {
 			p.c.db.SaveProfitToken(&database.TokenDb{
 				ID:              tokenData.CmcID,
@@ -851,6 +850,9 @@ func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([
 	return tokensForCalc, nil
 }
 func (p *ProfitableModule) CalculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) float64 {
+	if div == 0 {
+		//todo:
+	}
 	currentHashingPower := hashesPerSecond / div
 	miningShare := currentHashingPower / (netHashesPerSecond + currentHashingPower)
 	minedPerDay := miningShare * 86400 / float64(blockTime) * blockReward / div

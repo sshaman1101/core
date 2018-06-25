@@ -1,36 +1,39 @@
+log:
+  # The desired logging level.
+  # Allowed values are "debug", "info", "warn", "error", "panic" and "fatal"
+  level: debug
+
 market:
    endpoint: "83820f26c00e7dba7943d1ae394a1dd5e02f6d5d@127.0.0.1:15030"
 
 ethereum:
-  key_store: "/Users/doctorcotic/NodeKey"
-  pass_phrase: "11111111"
+  key_store: "./keys"
+  pass_phrase: "any"
 
 pool accounts:
-  zec_pool_addr: ""
-  xmr_pool_addr: ""
-  eth_pool_addr: "0x83820F26c00e7Dba7943d1aE394a1Dd5E02F6d5d"
+  zec_pool_addr: "any"
+  xmr_pool_addr: "any"
+  eth_pool_addr: "any"
 
-log:
-  level: debug
 
 # Interval for the distance between placed orders
-stepForToken:
+step for token:
   stepETH: 0.01
   stepZEC: 1
   stepXMR: 0.01
 
 # Interval for charging ETH orders (Mh/s)
-chargeOrdersInterval:
+charge orders interval:
   start: 10
   destination: 700
 
 # Interval for charging ZEC orders (H/s)
-chargeOrdersZECInterval:
+charge orders ZEC interval:
   start: 250
   destination: 9000
 
 # Interval for charging XMR orders (H/s)
-chargeOrdersXMRInterval:
+charge orders XMR interval:
   start: 1500
   destination: 22200
 
@@ -43,11 +46,11 @@ sensitivity:
   part_resale: 0.3
   part_buffer: 0.2
 
-otherParameters:
+other parameters:
   identityForBid: "ANONYMOUS"
 
 # Container fot task app
 images:
-  image: "abefimov/sonm-fake-miner"
+  image: "any"
 
 

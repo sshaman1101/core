@@ -1,19 +1,19 @@
 package connor
 
 import (
-	"github.com/sonm-io/core/util/xgrpc"
 	"context"
 	"crypto/ecdsa"
-	"google.golang.org/grpc/credentials"
-	"github.com/sonm-io/core/util"
-	"github.com/sonm-io/core/proto"
-	"time"
-	"github.com/ethereum/go-ethereum/crypto"
 	"fmt"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/sonm-io/core/proto"
+	"github.com/sonm-io/core/util"
+	"github.com/sonm-io/core/util/xgrpc"
+	"google.golang.org/grpc/credentials"
+	"time"
 
-	"github.com/sonm-io/core/connor/watchers"
-	"github.com/sonm-io/core/connor/database"
 	"github.com/noxiouz/zapctx/ctxlog"
+	"github.com/sonm-io/core/connor/database"
+	"github.com/sonm-io/core/connor/watchers"
 	"go.uber.org/zap"
 )
 

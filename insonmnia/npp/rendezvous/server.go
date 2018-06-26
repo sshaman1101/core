@@ -190,7 +190,6 @@ func (m *Server) NotifyJoin(node *memberlist.Node) {
 func (m *Server) NotifyLeave(node *memberlist.Node) {
 	m.log.Info("node has left from the cluster", zap.String("node_name", node.Name),
 		zap.String("node_addr", node.Address()))
-
 	m.continuum.Remove(m.formatEndpoint(node.Addr))
 	discardedAddrs := m.continuum.Add(m.formatEndpoint(node.Addr), 1)
 	m.dropDiscardedPeers(discardedAddrs)
@@ -464,6 +463,12 @@ func (m *Server) Run() error {
 		return err
 	}
 
+	nodes, err := m.cluster.Join(m.cfg.Cluster.Members)
+	if err != nil {
+		return err
+	}
+
+	m.log.Info("joined cluster", zap.Int("num_nodes", nodes))
 	m.log.Info("rendezvous is ready to serve", zap.Stringer("endpoint", listener.Addr()))
 	return m.server.Serve(listener)
 }

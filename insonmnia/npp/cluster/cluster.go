@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/pborman/uuid"
 	"github.com/sonm-io/core/util/netutil"
 	"go.uber.org/zap"
 )
@@ -26,7 +27,11 @@ func NewCluster(cfg Config, notified memberlist.EventDelegate, logger *zap.Logge
 	}
 
 	config := memberlist.DefaultWANConfig()
-	config.Name = cfg.Name
+	if len(cfg.Name) == 0 {
+		config.Name = uuid.New()
+	} else {
+		config.Name = cfg.Name
+	}
 	config.BindAddr = addr.String()
 	config.BindPort = int(port)
 

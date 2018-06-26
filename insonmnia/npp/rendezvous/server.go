@@ -280,7 +280,7 @@ func (m *Server) Publish(ctx context.Context, request *sonm.PublishRequest) (*so
 		Protocol: request.Protocol,
 		Addr:     *ethAddr,
 	}
-	if _, ok := m.continuum.Get(*ethAddr); !ok {
+	if nodeAddr, ok := m.continuum.Get(*ethAddr); !ok || nodeAddr != m.cfg.Addr.String() {
 		return nil, errWrongNode()
 	}
 

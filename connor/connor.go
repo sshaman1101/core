@@ -15,7 +15,6 @@ import (
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"go.uber.org/zap"
-	"os"
 )
 
 const (
@@ -38,8 +37,9 @@ type Connor struct {
 	DealClient  sonm.DealManagementClient
 	TokenClient sonm.TokenManagementClient
 
-	cfg *Config
-	db  *database.Database
+	cfg    *Config
+	db     *database.Database
+	logger *zap.Logger
 }
 
 func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor, error) {
@@ -73,27 +73,22 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 		return nil, fmt.Errorf("Cannot load balanceReply %v\r\n", err)
 	}
 
-	logger := ctxlog.GetLogger(ctx)
-
-	logger.Info("Config",
+	connor.logger = ctxlog.GetLogger(ctx)
+	connor.logger.Info("Config",
 		zap.String("Eth Node address", cfg.Market.Endpoint),
 		zap.String("key", crypto.PubkeyToAddress(key.PublicKey).String()))
-	logger.Info("Balance",
+	connor.logger.Info("Balance",
 		zap.String("live", balanceReply.GetLiveBalance().Unwrap().String()),
 		zap.String("Side", balanceReply.GetSideBalance().ToPriceString()))
-
 	return connor, nil
 }
 
 func (c *Connor) Serve(ctx context.Context) error {
 	var err error
-
-	dataUpdate := time.NewTicker(3 * time.Second)
+	dataUpdate := time.NewTicker(10 * time.Second)
 	defer dataUpdate.Stop()
-	tradeUpdate := time.NewTicker(3 * time.Second)
+	tradeUpdate := time.NewTicker(15 * time.Second)
 	defer tradeUpdate.Stop()
-	poolTrack := time.NewTicker(900 * time.Second)
-	defer poolTrack.Stop()
 	poolInit := time.NewTimer(900 * time.Second)
 	defer poolInit.Stop()
 
@@ -118,6 +113,11 @@ func (c *Connor) Serve(ctx context.Context) error {
 	profitModule := NewProfitableModules(c)
 	poolModule := NewPoolModules(c)
 	traderModule := NewTraderModules(c, poolModule, profitModule)
+	balanceReply, err := c.TokenClient.Balance(ctx, &sonm.Empty{})
+	if err != nil {
+		return err
+	}
+	go traderModule.ChargeOrdersOnce(ctx, c.cfg.UsingToken.Token, token, snm, balanceReply)
 
 	for {
 		select {
@@ -130,15 +130,46 @@ func (c *Connor) Serve(ctx context.Context) error {
 			if err = token.Update(ctx); err != nil {
 				return fmt.Errorf("cannot update TOKEN data: %v\n", err)
 			}
+			if err = reportedPool.Update(ctx); err != nil {
+				return fmt.Errorf("cannot update reported pool data: %v\n", err)
+			}
+			if err = avgPool.Update(ctx); err != nil {
+				return fmt.Errorf("cannot update avg pool data: %v\n", err)
+			}
 			go profitModule.CollectTokensMiningProfit(token)
 		case <-tradeUpdate.C:
-			traderModule.TradeObserve(ctx, reportedPool, token, c.cfg)
+			traderModule.SaveActiveDealsIntoDB(ctx, c.DealClient)
+			_, pricePerSec, err := traderModule.GetPriceForTokenPerSec(token, c.cfg.UsingToken.Token)
+			if err != nil {
+				fmt.Printf("cannot get pricePerSec for token per sec %v\r\n", err)
+			}
+			actualPrice := traderModule.FloatToBigInt(pricePerSec)
+			deals, err := traderModule.c.db.GetDealsFromDB()
+			if err != nil {
+				return fmt.Errorf("cannot get deals from DB %v\r\n", err)
+			}
+			if len(deals) > 0 {
+				err = traderModule.DealsProfitTracking(ctx, actualPrice, deals, c.cfg.Images.Image)
+				if err != nil {
+					return err
+				}
+			}
+			orders, err := traderModule.c.db.GetOrdersFromDB()
+			if err != nil {
+				return fmt.Errorf("cannot get orders from DB %v\r\n", err)
+			}
+			if len(orders) > 0 {
+				err = traderModule.OrdersProfitTracking(ctx, c.cfg, actualPrice, orders)
+				if err != nil {
+					return err
+				}
+			}
 		case <-poolInit.C:
 			poolModule.SavePoolDataToDb(ctx, reportedPool, c.cfg.PoolAddress.EthPoolAddr)
-		case <-poolTrack.C:
 			poolModule.PoolHashrateTracking(ctx, reportedPool, avgPool, c.cfg.PoolAddress.EthPoolAddr)
 		}
 	}
+
 }
 
 func newCredentials(ctx context.Context, key *ecdsa.PrivateKey) (credentials.TransportCredentials, error) {

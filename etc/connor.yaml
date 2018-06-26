@@ -15,12 +15,14 @@ pool accounts:
   xmr_pool_addr: "any"
   eth_pool_addr: "any"
 
+using token:
+  token: "any"
 
 # Interval for the distance between placed orders
 step for token:
   stepETH: 0.01
   stepZEC: 1
-  stepXMR: 0.01
+  stepXMR: 1
 
 # Interval for charging ETH orders (Mh/s)
 charge orders interval:
@@ -45,6 +47,9 @@ sensitivity:
   part_charge: 0.5
   part_resale: 0.3
   part_buffer: 0.2
+  orders_change_percent: 10
+  deals_change_percent: 5
+  worker_limit_change_percent: 5
 
 other parameters:
   identityForBid: "ANONYMOUS"

@@ -7,9 +7,9 @@ import (
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/proto"
+	"go.uber.org/zap"
 	"log"
 	"math/big"
-	"os"
 	"strconv"
 	"time"
 )
@@ -23,195 +23,11 @@ const (
 	hashes       = 1000000
 	daysPerMonth = 30
 	secsPerDay   = 86400
+
+	hashingPower     = 1
+	costPerkWh       = 0.0
+	powerConsumption = 0.0
 )
-
-type PoolModule struct {
-	c *Connor
-}
-
-func NewPoolModules(c *Connor) *PoolModule {
-	return &PoolModule{
-		c: c,
-	}
-}
-
-func (m *PoolModule) DeployNewContainer(ctx context.Context, cfg *Config, deal *sonm.Deal, image string) (*sonm.StartTaskReply, error) {
-	env := map[string]string{
-		"ETH_POOL": EthPool,
-		"WALLET":   cfg.PoolAddress.EthPoolAddr,
-		"WORKER":   deal.Id.String(),
-	}
-	container := &sonm.Container{
-		Image: image,
-		Env:   env,
-	}
-	spec := &sonm.TaskSpec{
-		Container: container,
-		Registry:  &sonm.Registry{},
-		Resources: &sonm.AskPlanResources{},
-	}
-	startTaskRequest := &sonm.StartTaskRequest{
-		DealID: deal.GetId(),
-		Spec:   spec,
-	}
-	reply, err := m.c.TaskClient.Start(ctx, startTaskRequest)
-	if err != nil {
-		fmt.Printf("Cannot create start task request %s", err)
-		return nil, err
-	}
-	return reply, nil
-}
-
-func (m *PoolModule) SavePoolDataToDb(ctx context.Context, pool watchers.PoolWatcher, addr string) error {
-	pool.Update(ctx)
-	dataRH, err := pool.GetData(addr)
-	if err != nil {
-		log.Printf("Cannot get data RH  --> %v\r\n", err)
-		return err
-	}
-	for _, rh := range dataRH.PoolWorkersData.Data {
-		fmt.Printf("w:: %v, data :: %v\r\n", rh.Worker, rh.Hashrate)
-		poolBalance, err := strconv.ParseFloat(dataRH.PoolData.Data.Balance, 64)
-		if err != nil {
-			log.Printf("Cannot parse pooldata :: balance %v", err)
-			return err
-		}
-		poolHashrate, err := strconv.ParseFloat(dataRH.PoolData.Data.Hashrate, 64)
-		if err != nil {
-			log.Printf("Cannot parse pooldata :: hashrate %v", err)
-			return err
-		}
-		m.c.db.SavePoolIntoDB(&database.PoolDb{
-			PoolId:                 addr,
-			PoolBalance:            poolBalance,
-			PoolHashrate:           poolHashrate,
-			WorkerID:               rh.Worker,
-			WorkerReportedHashrate: rh.Hashrate,
-			WorkerAvgHashrate:      0,
-			BadGuy:                 0,
-			Iterations:             0,
-			TimeStart:              time.Now(),
-			TimeUpdate:             time.Now(),
-		})
-	}
-	return nil
-}
-
-func (m *PoolModule) UpdateRHPoolData(ctx context.Context, poolRHData watchers.PoolWatcher, addr string) error {
-	poolRHData.Update(ctx)
-	dataRH, err := poolRHData.GetData(addr)
-	if err != nil {
-		log.Printf("Cannot get data RH  --> %v\r\n", err)
-		return err
-	}
-
-	for _, rh := range dataRH.PoolWorkersData.Data {
-		m.c.db.UpdateReportedHashratePoolDB(rh.Worker, rh.Hashrate, time.Now())
-	}
-	return nil
-}
-
-func (m *PoolModule) UpdateAvgPoolData(ctx context.Context, poolAvgData watchers.PoolWatcher, addr string) error {
-	poolAvgData.Update(ctx)
-	dataRH, err := poolAvgData.GetData(addr)
-	if err != nil {
-		log.Printf("Cannot get data AvgPool  --> %v\r\n", err)
-		return err
-	}
-
-	for _, rh := range dataRH.PoolWorkersData.Data {
-		m.c.db.UpdateAvgPoolDB(rh.Worker, rh.Hashrate, time.Now())
-	}
-	return nil
-}
-
-func (m *PoolModule) UpdateMainData(ctx context.Context, poolRHData watchers.PoolWatcher, poolAvgData watchers.PoolWatcher, addr string) error {
-	workers, err := m.c.db.GetWorkersFromDB()
-	if err != nil {
-		fmt.Printf("cannot get worker from pool DB")
-		return err
-	}
-	for _, w := range workers {
-		if w.Iterations < numberOfIterationsForH1 && w.BadGuy < numberOfLives {
-			if err = m.UpdateRHPoolData(ctx, poolRHData, addr); err != nil {
-				log.Printf("cannot update RH pool data!")
-				return err
-			}
-		} else {
-			if err = m.UpdateAvgPoolData(ctx, poolAvgData, addr); err != nil {
-				log.Printf("cannot update AVG pool data!")
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (m *PoolModule) PoolHashrateTracking(ctx context.Context, poolRHData watchers.PoolWatcher, poolAvgData watchers.PoolWatcher, addr string) error {
-	m.UpdateMainData(ctx, poolRHData, poolAvgData, addr)
-	workers, err := m.c.db.GetWorkersFromDB()
-	if err != nil {
-		fmt.Printf("cannot get worker from pool DB")
-		return err
-	}
-
-	for _, w := range workers {
-		wId, err := strconv.Atoi(w.WorkerID)
-		if err != nil {
-			return fmt.Errorf("cannot atoi returns %v", err)
-		}
-
-		dealID, err := m.c.DealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(int64(wId)).Bytes()})
-		if err != nil {
-			fmt.Printf("Cannot get deal from market %v\r\n", w.WorkerID)
-			return err
-		}
-		bidOrder, err := m.c.Market.GetOrderByID(ctx, &sonm.ID{Id: dealID.Deal.BidID.Unwrap().String()})
-		if err != nil {
-			fmt.Printf("cannot get order from market by ID")
-			return err
-		}
-
-		iteration := int32(w.Iterations + 1)
-		bidHashrate := bidOrder.GetBenchmarks().GPUEthHashrate()
-
-		if iteration < numberOfIterationsForH1 && w.BadGuy < numberOfLives {
-			log.Printf("ITERATION :: %v for worker :: %v !\r\n", iteration, w.WorkerID)
-			workerReportedHashrate := uint64(w.WorkerReportedHashrate * hashes)
-			if workerReportedHashrate < bidHashrate {
-				log.Printf("ID :: %v ==> wRH %v < deal (bid) hashrate %v ==> PID! \r\n", w.WorkerID, workerReportedHashrate, bidHashrate)
-				if w.BadGuy < numberOfLives {
-					newStatus := w.BadGuy + 1
-					m.c.db.UpdateWorkerStatusInPoolDB(w.WorkerID, newStatus, time.Now())
-				} else {
-					m.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
-						Id:            dealID.Deal.Id,
-						BlacklistType: 1,
-					})
-					fmt.Printf("This deal is destroyed (bad status in Pool) : %v!\r\n", dealID.Deal.Id)
-				}
-			}
-		} else {
-			log.Printf("Iteration for worker :: %v more than 4 == > get Avg Data", w.WorkerID)
-			workerAvgHashrate := uint64(w.WorkerAvgHashrate * 1000000)
-			if workerAvgHashrate < bidHashrate {
-				log.Printf("ID :: %v ==> wRH %v < deal (bid) hashrate %v ==> PID! \r\n", w.WorkerID, workerAvgHashrate, bidHashrate)
-				if w.BadGuy < 5 {
-					newStatus := w.BadGuy + 1
-					m.c.db.UpdateWorkerStatusInPoolDB(w.WorkerID, newStatus, time.Now())
-				} else {
-					m.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
-						Id:            dealID.Deal.Id,
-						BlacklistType: 1,
-					})
-					fmt.Printf("This deal is destroyed (Pidor more than 5) : %v!\r\n", dealID.Deal.Id)
-				}
-			}
-		}
-		m.c.db.UpdateIterationPoolDB(w.WorkerID, iteration)
-	}
-	return nil
-}
 
 type TraderModule struct {
 	c      *Connor
@@ -242,7 +58,6 @@ const (
 	OrderStatusReinvoice OrderStatus = 4
 )
 
-// 
 func (t *TraderModule) getTokenConfiguration(symbol string, cfg *Config) (float64, float64, float64, error) {
 	switch symbol {
 	case "ETH":
@@ -299,43 +114,41 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, toke
 
 	pricePackMhInUSDPerMonth := mhashForToken * (pricePerMonthUSD * t.c.cfg.Sensitivity.MarginAccounting)
 	sumOrdersPerMonth := limitChargeInUSD / pricePackMhInUSDPerMonth
+	if limitChargeInSNM.Int64() == 0 {
+		log.Printf("Balance SNM is not enough for create orders! %v", limitChargeInSNM.Int64())
+		return err
+	}
 
-	log.Printf("CHARGE %v ORDERS ONCE: \r\n"+
-		"Price per month %.2f USD, price per sec %v USD for Mh/s\r\n"+
-		"Limit for Charge		   :: %.2f $ (%.8v SNM)\r\n"+
-		"Price Order Per Month	   :: %f $\r\n"+
-		"Default step			   :: %.2f MH/s\r\n"+
-		"You can create 		   :: %v orders ranging from: %.2f Mh/s - %.2f Mh/s with step: %.2f\r\n"+
-		"START CHARGE ..................................",
-		symbol, pricePerMonthUSD, pricePerSecMh, limitChargeInUSD, t.PriceToString(limitChargeInSNM), pricePackMhInUSDPerMonth, mhashForToken, int(sumOrdersPerMonth),
-		start, destination, step)
+	t.c.logger.Info("i", zap.String("CHARGE ORDERS ONCE: ", symbol),
+		zap.String("Limit for Charge SNM :", t.PriceToString(limitChargeInSNM)),
+		zap.Float64("Limit for Charge USD :", limitChargeInUSD),
+		zap.Float64("Pack Price per month USD", pricePackMhInUSDPerMonth),
+		zap.Int("Sum orders per month", int(sumOrdersPerMonth)))
 
 	for i := 0; i < int(sumOrdersPerMonth); i++ {
 		if mhashForToken >= destination {
-			fmt.Printf("Charge is finished cause reached the limit %.2f Mh/s\r\n", t.c.cfg.ChargeIntervalETH.Destination)
+			log.Printf("Charge is finished cause reached the limit %.2f Mh/s\r\n", t.c.cfg.ChargeIntervalETH.Destination)
 			break
 		}
 		pricePerSecPack := t.FloatToBigInt(mhashForToken * pricePerSecMh)
-		log.Printf("Price :: %v\r\n", t.PriceToString(pricePerSecPack))
-		mhashForToken, err = t.ChargeOrders(ctx, t.c.cfg, t.c.Market, symbol, pricePerSecPack, step, mhashForToken)
+		zap.String("Price :: %v\r\n", t.PriceToString(pricePerSecPack))
+		mhashForToken, err = t.ChargeOrders(ctx, symbol, pricePerSecPack, step, mhashForToken)
 		if err != nil {
 			return fmt.Errorf("Cannot charging market! %v\r\n", err)
 		}
 	}
-	log.Printf("Balance is not enough to make deals!\r\n")
 	return nil
 }
 
 // Prepare price and Map depends on token symbol.
 // Create orders to the market, until the budget is over.
-func (t *TraderModule) ChargeOrders(ctx context.Context, cfg *Config, client sonm.MarketClient,
-	symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64) (float64, error) {
+func (t *TraderModule) ChargeOrders(ctx context.Context, symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64) (float64, error) {
 	requiredHashRate := uint64(buyMghash * hashes)
 	benchmarks, err := t.getBenchmarksForSymbol(symbol, uint64(requiredHashRate))
 	if err != nil {
 		return 0, err
 	}
-	buyMghash, err = t.CreateOrderOnMarketStep(ctx, cfg, client, step, benchmarks, buyMghash, priceForHashPerSec)
+	buyMghash, err = t.CreateOrderOnMarketStep(ctx, step, benchmarks, buyMghash, priceForHashPerSec)
 	if err != nil {
 		return 0, err
 	}
@@ -343,16 +156,14 @@ func (t *TraderModule) ChargeOrders(ctx context.Context, cfg *Config, client son
 }
 
 // Create order on market depends on token.
-func (t *TraderModule) CreateOrderOnMarketStep(ctx context.Context, cfg *Config,
-	market sonm.MarketClient, step float64, benchmarks map[string]uint64,
-	buyMgHash float64, price *big.Int) (float64, error) {
-	actOrder, err := market.CreateOrder(ctx, &sonm.BidOrder{
+func (t *TraderModule) CreateOrderOnMarketStep(ctx context.Context, step float64, benchmarks map[string]uint64, buyMgHash float64, price *big.Int) (float64, error) {
+	actOrder, err := t.c.Market.CreateOrder(ctx, &sonm.BidOrder{
 		Tag:      "Connor bot",
 		Duration: &sonm.Duration{},
 		Price: &sonm.Price{
 			PerSecond: sonm.NewBigInt(price),
 		},
-		Identity: cfg.OtherParameters.IdentityForBid,
+		Identity: t.c.cfg.OtherParameters.IdentityForBid,
 		Resources: &sonm.BidResources{
 			Benchmarks: benchmarks,
 			Network: &sonm.BidNetwork{
@@ -409,45 +220,6 @@ func (t *TraderModule) GetPriceForTokenPerSec(token watchers.TokenWatcher, symbo
 	return pricePerMonthUSD, pricePerSec, nil
 }
 
-// After charge orders
-func (t *TraderModule) TradeObserve(ctx context.Context, pool watchers.PoolWatcher, token watchers.TokenWatcher, cfg *Config) error {
-	log.Printf("MODULE TRADE OBSERVE :: ")
-	err := t.SaveActiveDealsIntoDB(ctx, t.c.DealClient)
-	if err != nil {
-		fmt.Printf("cannot save active deals intoDB %v\r\n", err)
-	}
-
-	_, pricePerSec, err := t.GetPriceForTokenPerSec(token, "ETH")
-	if err != nil {
-		fmt.Printf("cannot get pricePerSec for token per sec %v\r\n", err)
-	}
-
-	actualPrice := t.FloatToBigInt(pricePerSec)
-	log.Printf("Actual price per sec :: %v\r\n", t.PriceToString(actualPrice))
-
-	deals, err := t.c.db.GetDealsFromDB()
-	if err != nil {
-		return fmt.Errorf("cannot get deals from DB %v\r\n", err)
-	}
-	orders, err := t.c.db.GetOrdersFromDB()
-	if err != nil {
-		return fmt.Errorf("cannot get orders from DB %v\r\n", err)
-	}
-	err = t.OrdersProfitTracking(ctx, cfg, actualPrice, orders)
-	if err != nil {
-		return err
-	}
-	err = t.ResponseActiveDeals(ctx, cfg, deals, cfg.Images.Image)
-	if err != nil {
-		return err
-	}
-	err = t.DealsProfitTracking(ctx, actualPrice, t.c.DealClient, t.c.Market, deals)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (t *TraderModule) ReinvoiceOrder(ctx context.Context, cfg *Config, price *sonm.Price, bench map[string]uint64, tag string) error {
 	order, err := t.c.Market.CreateOrder(ctx, &sonm.BidOrder{
 		Duration: &sonm.Duration{Nanoseconds: 0},
@@ -482,18 +254,113 @@ func (t *TraderModule) ReinvoiceOrder(ctx context.Context, cfg *Config, price *s
 	return nil
 }
 
-// Get active deals --> for each active deal DEPLOY NEW CONTAINER --> Reinvoice order
-func (t *TraderModule) ResponseActiveDeals(ctx context.Context, cfg *Config, dealsDb []*database.DealDb, imageMonero string) error {
+func (t *TraderModule) CmpChangeOfPrice(change float64, def float64) (int32, error) {
+	if change >= 100+def {
+		return 1, nil
+	} else if change < 100-def {
+		return -1, nil
+	}
+	return 0, nil
+}
+
+func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, actualPrice *big.Int, ordersDb []*database.OrderDb) error {
+	actualPriceCur := big.NewInt(actualPrice.Int64())
+
+	for _, orderDb := range ordersDb {
+		actualPriceClone := big.NewInt(0).Set(actualPriceCur)
+		order, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
+		if err != nil {
+			log.Printf("cannot get order from market %v\r\n", err)
+			return err
+		}
+		if orderDb.ButterflyEffect != int32(OrderStatusCancelled) {
+			if order.GetOrderStatus() == sonm.OrderStatus_ORDER_ACTIVE {
+				orderPrice := order.Price.Unwrap()
+				pack := int64(order.GetBenchmarks().GPUEthHashrate()) / hashes
+				pricePerSecForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(pack))
+
+				change, err := t.GetChangePercent(pricePerSecForPack, orderPrice)
+				if err != nil {
+					return fmt.Errorf("cannot get changes percent: %v", err)
+				}
+
+				commandPrice, err := t.CmpChangeOfPrice(change, cfg.Sensitivity.OrdersChangePercent)
+				if commandPrice == 1 || commandPrice == -1 {
+					log.Printf("Active Order Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v)change percent: %.2f %%\r\n",
+						orderDb.OrderID, t.PriceToString(orderPrice), t.PriceToString(pricePerSecForPack), t.PriceToString(actualPrice), change)
+					bench, err := t.GetBidBenchmarks(order)
+					if err != nil {
+						fmt.Printf("Cannot get benchmarks from Order : %v\r\n", order.Id.Unwrap().Int64())
+						return err
+					}
+					tag := strconv.Itoa(int(orderDb.OrderID))
+					t.ReinvoiceOrder(ctx, cfg, &sonm.Price{PerSecond: sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice (update price): "+tag)
+					t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
+				}
+			} else {
+				log.Printf("Order is not ACTIVE %v\r\n", order.Id)
+				t.c.db.UpdateOrderInDB(orderDb.OrderID, 3)
+			}
+		}
+	}
+	return nil
+}
+
+// Pursue a profitable lvl of deal :: profitable price > deal price  => resale order with new price else do nothing
+// Using deployed and not deployed deals
+func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big.Int, dealsDb []*database.DealDb, image string) error {
 	for _, dealDb := range dealsDb {
-		if dealDb.Status == 1 && dealDb.DeployStatus == 4 {
+		actualPriceClone, err := t.ClonePrice(actualPrice)
+		if err != nil {
+			return fmt.Errorf("Cannot get clone price: %v", err)
+		}
+
+		dealOnMarket, err := t.c.DealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(dealDb.DealID).Bytes()})
+		if err != nil {
+			return fmt.Errorf("cannot get deal info %v\r\n", err)
+		}
+		if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int32(DeployStatusDEPLOYED) {
+			bidOrder, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: dealOnMarket.Deal.BidID.Unwrap().String()})
+			if err != nil {
+				return err
+			}
+			pack := float64(bidOrder.Benchmarks.GPUEthHashrate()) / float64(hashes)
+			actualPriceForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(int64(pack)))
+			dealPrice := dealOnMarket.Deal.Price.Unwrap()
+			log.Printf("Deal id::%v (Bid:: %v) price :: %v, actual price for pack :: %v (hashes %v)\r\n", dealOnMarket.Deal.Id.String(), bidOrder.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), pack)
+			if dealDb.DeployStatus == 3 {
+				if actualPriceForPack.Cmp(dealPrice) >= 1 {
+					changePercent, err := t.GetChangePercent(actualPriceForPack, dealPrice)
+					if err != nil {
+						return fmt.Errorf("cannot get change percent from deal: %v", err)
+					}
+					log.Printf("Create CR ===> Active Deal Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v) change percent: %.2f %%\r\n",
+						dealOnMarket.Deal.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), t.PriceToString(actualPrice), changePercent)
+					dealChangeRequest, err := t.c.DealClient.CreateChangeRequest(ctx, &sonm.DealChangeRequest{
+						Id:          nil,
+						DealID:      dealOnMarket.Deal.Id,
+						RequestType: 1,
+						Duration:    0,
+						Price:       &sonm.BigInt{Abs: actualPriceForPack.Bytes()},
+						Status:      1,
+						CreatedTS:   nil,
+					})
+					if err != nil {
+						return fmt.Errorf("cannot create change request %v\r\n", err)
+					}
+					fmt.Printf("CR :: %v for DealId :: %v\r\n", dealChangeRequest.String(), dealOnMarket.Deal.Id)
+				}
+			}
+		} else
+		if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int32(DeployStatusNOTDEPLOYED) {
 			getDealFromMarket, err := t.c.DealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(dealDb.DealID).Bytes()})
 			if err != nil {
 				return fmt.Errorf("cannot get deal from Market %v\r\n", err)
 			}
 			deal := getDealFromMarket.Deal
 
-			fmt.Printf("Deploying NEW CONTAINER ==> for dealDB %v (deal on market: %v\r\n)", dealDb.DealID, deal.GetId().Unwrap().String())
-			task, err := t.pool.DeployNewContainer(ctx, cfg, deal, imageMonero)
+			log.Printf("Deploying NEW CONTAINER ==> for dealDB %v (deal on market: %v\r\n)", dealDb.DealID, deal.GetId().Unwrap().String())
+			task, err := t.pool.DeployNewContainer(ctx, t.c.cfg, deal, image)
 			if err != nil {
 				t.c.db.UpdateDealInDB(deal.Id.Unwrap().Int64(), int32(DeployStatusNOTDEPLOYED))
 				return fmt.Errorf("Cannot deploy new container from task %s\r\n", err)
@@ -512,108 +379,7 @@ func (t *TraderModule) ResponseActiveDeals(ctx context.Context, cfg *Config, dea
 				fmt.Printf("Cannot get benchmarks from bid Order : %v\r\n", bidOrder.Id.Unwrap().Int64())
 				return err
 			}
-			t.ReinvoiceOrder(ctx, cfg, &sonm.Price{PerSecond: deal.GetPrice()}, bench, "Reinvoice")
-		} else {
-			fmt.Printf("For all received deals status :: DEPLOYED")
-		}
-	}
-	return nil
-}
-
-func (t *TraderModule) CmpChangeOfPrice(change float64, def float64) (int32, error) {
-	if change >= 100+def {
-		return 1, nil //increase
-	} else if change < 100-def {
-		return -1, nil
-	}
-	return 0, nil
-}
-
-func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, actualPrice *big.Int, ordersDb []*database.OrderDb) error {
-	log.Printf("MODULE :: Orders Profit Tracking")
-	actualPriceCur := big.NewInt(actualPrice.Int64())
-
-	for _, orderDb := range ordersDb {
-		actualPriceClone := big.NewInt(0).Set(actualPriceCur)
-		order, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
-		if err != nil {
-			log.Printf("cannot get order from market %v\r\n", err)
-			return err
-		}
-		if orderDb.ButterflyEffect != 3 { // 3 :: Cancelled (is not)
-			if order.GetOrderStatus() == 2 { // 2 :: Active
-				orderPrice := order.Price.Unwrap()
-				pack := int64(order.GetBenchmarks().GPUEthHashrate()) / hashes
-				pricePerSecForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(pack))
-
-				//actualPackPrice := big.NewInt(pricePerSecForPack.Int64())
-				change, err := t.GetChangePercent(pricePerSecForPack, orderPrice)
-				if err != nil {
-					return fmt.Errorf("cannot get changes percent: %v", err)
-				}
-				log.Printf("Active Order Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v)change percent: %.2f %%\r\n", orderDb.OrderID, t.PriceToString(orderPrice), t.PriceToString(pricePerSecForPack), t.PriceToString(actualPrice), change)
-				commandPrice, err := t.CmpChangeOfPrice(change, 5)
-				if commandPrice == 1 || commandPrice == -1 {
-					bench, err := t.GetBidBenchmarks(order)
-					if err != nil {
-						fmt.Printf("Cannot get benchmarks from Order : %v\r\n", order.Id.Unwrap().Int64())
-						return err
-					}
-					tag := strconv.Itoa(int(orderDb.OrderID))
-					t.ReinvoiceOrder(ctx, cfg, &sonm.Price{PerSecond: sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice OldOrder: "+tag)
-					t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
-				}
-			} else {
-				fmt.Printf("Order is not ACTIVE %v\r\n", order.Id)
-				t.c.db.UpdateOrderInDB(orderDb.OrderID, 3)
-			}
-		}
-	}
-	return nil
-}
-
-// Pursue a profitable lvl of deal :: profitable price > deal price  => resale order with new price else do nothing
-// Debug :: actualPrice == actualPriceForPack
-func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big.Int, dealClient sonm.DealManagementClient, marketClient sonm.MarketClient, dealsDb []*database.DealDb) error {
-	log.Printf("DEALS PROFIT TRACKING ::")
-	for _, d := range dealsDb {
-		actualPriceClone, err := t.ClonePrice(actualPrice)
-		if err != nil {
-			return fmt.Errorf("Cannot get clone price: %v", err)
-		}
-
-		dealOnMarket, err := dealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(d.DealID).Bytes()})
-		if err != nil {
-			return fmt.Errorf("cannot get deal info %v\r\n", err)
-		}
-		bidOrder, err := marketClient.GetOrderByID(ctx, &sonm.ID{Id: dealOnMarket.Deal.BidID.Unwrap().String()})
-		if err != nil {
-			return err
-		}
-		pack := float64(bidOrder.Benchmarks.GPUEthHashrate()) / float64(1000000)
-		actualPriceForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(int64(pack)))
-		dealPrice := dealOnMarket.Deal.Price.Unwrap()
-		log.Printf("Deal id::%v (Bid:: %v) price :: %v, actual price for pack :: %v (hashes %v)\r\n", dealOnMarket.Deal.Id.String(), bidOrder.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), pack)
-		if actualPriceForPack.Cmp(dealPrice) >= 1 {
-			changePercent, err := t.GetChangePercent(actualPriceForPack, dealPrice)
-			if err != nil {
-				return fmt.Errorf("cannot get change percent from deal: %v", err)
-			}
-			log.Printf("Create CR ===> Active Deal Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v) change percent: %.2f %%\r\n",
-				dealOnMarket.Deal.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), t.PriceToString(actualPrice), changePercent)
-			dealChangeRequest, err := dealClient.CreateChangeRequest(ctx, &sonm.DealChangeRequest{
-				Id:          nil,
-				DealID:      dealOnMarket.Deal.Id,
-				RequestType: 1,
-				Duration:    0,
-				Price:       &sonm.BigInt{Abs: actualPriceForPack.Bytes()},
-				Status:      1,
-				CreatedTS:   nil,
-			})
-			if err != nil {
-				return fmt.Errorf("cannot create change request %v\r\n", err)
-			}
-			fmt.Printf("CR :: %v for DealId :: %v\r\n", dealChangeRequest.String(), dealOnMarket.Deal.Id)
+			t.ReinvoiceOrder(ctx, t.c.cfg, &sonm.Price{PerSecond: deal.GetPrice()}, bench, "Reinvoice(response by activeDeal)")
 		}
 	}
 	return nil
@@ -636,7 +402,7 @@ func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config)
 	}
 }
 
-func (t *TraderModule) GetChangeRequest(ctx context.Context, dealCli sonm.DealManagementClient) {
+func (t *TraderModule) GetChangeRequest(ctx context.Context) {
 	//TODO : Create check ChangeRequest status (by approve)
 }
 
@@ -681,13 +447,14 @@ func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.D
 				Status:       int32(deal.GetStatus()),
 				Price:        deal.GetPrice().Unwrap().Int64(),
 				AskId:        deal.GetAskID().Unwrap().Int64(),
+				BidID:        deal.GetBidID().Unwrap().Int64(),
 				DeployStatus: 4,
 				StartTime:    deal.GetStartTime().Unix(),
 				LifeTime:     deal.GetEndTime().Unix(),
 			})
 		}
 	} else {
-		fmt.Printf("No active deals\r\n")
+		log.Printf("No active deals\r\n")
 		time.Sleep(15 * time.Second)
 	}
 	return nil
@@ -766,115 +533,4 @@ func (t *TraderModule) PriceToString(c *big.Int) string {
 	div := big.NewFloat(params.Ether)
 	r := big.NewFloat(0).Quo(v, div)
 	return r.Text('f', -18)
-}
-
-// CALCULATE TOKENS
-
-type ProfitableModule struct {
-	c *Connor
-}
-
-func NewProfitableModules(c *Connor) *ProfitableModule {
-	return &ProfitableModule{
-		c: c,
-	}
-}
-
-const (
-	hashingPower     = 1
-	costPerkWh       = 0.0
-	powerConsumption = 0.0
-)
-
-type powerAndDivider struct {
-	power float64
-	div   float64
-}
-
-func (p *ProfitableModule) getHashPowerAndDividerForToken(s string, hp float64) (float64, float64, bool) {
-	var tokenHashPower = map[string]powerAndDivider{
-		"ETH": {div: 1, power: hashingPower * 1000000.0},
-		"XMR": {div: 1, power: 1},
-		"ZEC": {div: 1, power: 1},
-	}
-	k, ok := tokenHashPower[s]
-	if !ok {
-		return .0, .0, false
-	}
-	return k.power, k.div, true
-}
-
-type TokenMainData struct {
-	Symbol            string
-	ProfitPerDaySnm   float64
-	ProfitPerMonthSnm float64
-	ProfitPerMonthUsd float64
-}
-
-func (p *ProfitableModule) getTokensForProfitCalculation() []*TokenMainData {
-	return []*TokenMainData{
-		{Symbol: "ETH"},
-		{Symbol: "XMR"},
-		{Symbol: "ZEC"},
-	}
-}
-func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([]*TokenMainData, error) {
-	var tokensForCalc = p.getTokensForProfitCalculation()
-	for _, token := range tokensForCalc {
-		tokenData, err := t.GetTokenData(token.Symbol)
-		if err != nil {
-			log.Printf("cannot get token data %v\r\n", err)
-		}
-		hashesPerSecond, divider, ok := p.getHashPowerAndDividerForToken(tokenData.Symbol, tokenData.NetHashPerSec)
-		if !ok {
-			log.Printf("DEBUG :: cannot process tokenData %s, not in list\r\n", tokenData.Symbol)
-			continue
-		}
-		netHashesPerSec := int64(tokenData.NetHashPerSec)
-		token.ProfitPerMonthUsd = p.CalculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, float64(netHashesPerSec), tokenData.BlockReward, divider, tokenData.BlockTime)
-		log.Printf("TOKEN :: %v, priceUSD: %v, hashes per Sec: %v, net hashes per sec : %v, block reward : %v, divider %v, blockTime : %v, PROFIT PER MONTH : %v\r\n",
-			token.Symbol, tokenData.PriceUSD, hashesPerSecond, netHashesPerSec, tokenData.BlockReward, divider, tokenData.BlockTime, token.ProfitPerMonthUsd)
-		if token.Symbol == "ETH" {
-			p.c.db.SaveProfitToken(&database.TokenDb{
-				ID:              tokenData.CmcID,
-				Name:            token.Symbol,
-				UsdPrice:        tokenData.PriceUSD,
-				NetHashesPerSec: tokenData.NetHashPerSec,
-				BlockTime:       tokenData.BlockTime,
-				BlockReward:     tokenData.BlockReward,
-				ProfitPerMonth:  token.ProfitPerMonthUsd,
-				DateTime:        time.Now(),
-			})
-		}
-	}
-	return tokensForCalc, nil
-}
-func (p *ProfitableModule) CalculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) float64 {
-	if div == 0 {
-		//todo:
-	}
-	currentHashingPower := hashesPerSecond / div
-	miningShare := currentHashingPower / (netHashesPerSecond + currentHashingPower)
-	minedPerDay := miningShare * 86400 / float64(blockTime) * blockReward / div
-	powerCostPerDayUSD := (powerConsumption * 24) / 1000 * costPerkWh
-	returnPerDayUSD := (usd*float64(minedPerDay) - (usd * float64(minedPerDay) * 0.01)) - powerCostPerDayUSD
-	perMonthUSD := float64(returnPerDayUSD * 30)
-	return perMonthUSD
-}
-
-//Limit balance for Charge orders. Default value = 0.5
-func (p *ProfitableModule) LimitChargeSNM(balance *big.Int, partCharge float64) *big.Int {
-	limitChargeSNM := balance.Div(balance, big.NewInt(100))
-	limitChargeSNM = limitChargeSNM.Mul(balance, big.NewInt(int64(partCharge*100)))
-	return limitChargeSNM
-}
-
-//converting snmBalance = > USD Balance
-func (p *ProfitableModule) ConvertingToUSDBalance(balanceSide *big.Int, snmPrice float64) float64 {
-	bal := balanceSide.Mul(balanceSide, big.NewInt(int64(snmPrice*1e18)))
-	bal = bal.Div(bal, big.NewInt(1e18))
-	d, e := bal.DivMod(bal, big.NewInt(1e18), big.NewInt(0))
-	f, _ := big.NewFloat(0).SetInt(e).Float64()
-	res := float64(d.Int64()) + (f / 1e18)
-	return res
 }

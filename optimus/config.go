@@ -10,6 +10,7 @@ import (
 	"github.com/sonm-io/core/insonmnia/auth"
 	"github.com/sonm-io/core/insonmnia/benchmarks"
 	"github.com/sonm-io/core/insonmnia/logging"
+	"github.com/sonm-io/core/proto"
 	"go.uber.org/zap"
 )
 
@@ -17,9 +18,15 @@ const (
 	PolicySpotOnly OrderPolicy = iota
 )
 
+type nodeConfig struct {
+	PrivateKey privateKey `yaml:"ethereum" json:"-"`
+	Endpoint   auth.Addr  `yaml:"endpoint"`
+}
+
 type Config struct {
 	PrivateKey   privateKey                 `yaml:"ethereum" json:"-"`
 	Logging      logging.Config             `yaml:"logging"`
+	Node         nodeConfig                 `yaml:"node"`
 	Workers      map[auth.Addr]workerConfig `yaml:"workers"`
 	Benchmarks   benchmarks.Config          `yaml:"benchmarks"`
 	Marketplace  marketplaceConfig          `yaml:"marketplace"`
@@ -37,8 +44,11 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 type workerConfig struct {
-	Epoch       time.Duration `yaml:"epoch"`
-	OrderPolicy OrderPolicy   `yaml:"order_policy"`
+	PrivateKey  privateKey         `yaml:"ethereum" json:"-"`
+	Epoch       time.Duration      `yaml:"epoch"`
+	OrderPolicy OrderPolicy        `yaml:"order_policy"`
+	DryRun      bool               `yaml:"dry_run" default:"false"`
+	Identity    sonm.IdentityLevel `yaml:"identity" required:"true"`
 }
 
 type OrderPolicy int
@@ -72,7 +82,7 @@ func (m *privateKey) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	key, err := cfg.LoadKey(accounts.Silent())
+	key, err := cfg.LoadKey()
 	if err != nil {
 		return err
 	}
@@ -82,8 +92,9 @@ func (m *privateKey) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type marketplaceConfig struct {
-	Interval time.Duration
-	Endpoint auth.Addr
+	PrivateKey privateKey    `yaml:"ethereum" json:"-"`
+	Endpoint   auth.Addr     `yaml:"endpoint"`
+	Interval   time.Duration `yaml:"interval"`
 }
 
 type optimizationConfig struct {

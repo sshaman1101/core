@@ -9,7 +9,7 @@ if (process.env.PRV_KEY !== undefined) {
 }
 let masterchainEndpoint = 'https://mainnet.infura.io/';
 let rinkebyEndpoint = 'https://rinkeby.infura.io/';
-let sidechainEndpoint = 'https://sidechain.sonm.com';
+let sidechainEndpoint = 'https://sidechain.livenet.sonm.com';
 let sidechainDevEndpoint = 'https://sidechain-dev.sonm.com';
 
 let mochaConfig = {};

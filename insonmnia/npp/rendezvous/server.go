@@ -177,7 +177,12 @@ func NewServer(cfg ServerConfig, options ...Option) (*Server, error) {
 }
 
 func (m *Server) Discover(ctx context.Context, in *sonm.HandshakeRequest) (*sonm.DiscoverResponse, error) {
-	return nil, nil
+	targetAddr, ok := m.continuum.Get(common.BytesToAddress(in.Addr))
+	if !ok {
+		targetAddr = m.cfg.Addr.String()
+	}
+	m.log.Debug("redirecting", zap.String("target", targetAddr))
+	return &sonm.DiscoverResponse{Addr: targetAddr}, nil
 }
 
 func (m *Server) NotifyJoin(node *memberlist.Node) {
@@ -285,6 +290,8 @@ func (m *Server) Publish(ctx context.Context, request *sonm.PublishRequest) (*so
 
 	m.log.Info("publishing remote peer", zap.String("id", ethAddr.String()))
 
+	m.continuum.Track(*ethAddr)
+	id := ethAddr.String()
 	peerHandle := NewPeer(*peerInfo, request.PrivateAddrs)
 
 	c, deleter := m.newClientWatch(id, peerHandle)

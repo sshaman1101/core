@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-
-	"time"
-
 	"log"
 	"os"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/sonm-io/core/accounts"
@@ -51,7 +49,14 @@ func main() {
 		if err != nil {
 			log.Printf("failed to Accept(): %s", err)
 		} else {
-			log.Printf("accepted connection from %s", conn.RemoteAddr())
+			log.Printf("accepted connection (%s, %s)", conn.LocalAddr(), conn.RemoteAddr())
+			var buf []byte
+			_, err := conn.Read(buf)
+			if err != nil {
+				log.Printf("failed to read: %s", err)
+			} else {
+				log.Printf("received: %s", string(buf))
+			}
 		}
 	}
 }

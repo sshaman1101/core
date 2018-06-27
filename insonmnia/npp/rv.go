@@ -4,9 +4,12 @@ import (
 	"context"
 	"net"
 
+	"fmt"
+
 	"github.com/libp2p/go-reuseport"
 	"github.com/sonm-io/core/insonmnia/auth"
 	"github.com/sonm-io/core/insonmnia/npp/rendezvous"
+	"github.com/sonm-io/core/proto"
 	"github.com/sonm-io/core/util/xgrpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -23,6 +26,11 @@ type rendezvousClient struct {
 }
 
 func newRendezvousClient(ctx context.Context, addr auth.Addr, credentials credentials.TransportCredentials) (*rendezvousClient, error) {
+	targetAddr, err := addr.ETH()
+	if err != nil {
+		return nil, err
+	}
+
 	// Setting TCP keepalive is required, because NAT's conntrack can purge out
 	// idle connections for its internal garbage collection reasons at the most
 	// inopportune moment.
@@ -44,7 +52,19 @@ func newRendezvousClient(ctx context.Context, addr auth.Addr, credentials creden
 
 	client, err := rendezvous.NewRendezvousClient(ctx, addr.String(), credentials, xgrpc.WithConn(conn))
 	if err != nil {
+		conn.Close()
 		return nil, err
+	}
+
+	resp, err := client.Discover(ctx, &sonm.HandshakeRequest{Addr: targetAddr.Bytes()})
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to Discover: %s", err)
+	}
+
+	if resp.Addr != netAddr {
+		conn.Close()
+		// connect to new addr
 	}
 
 	return &rendezvousClient{client, conn}, nil

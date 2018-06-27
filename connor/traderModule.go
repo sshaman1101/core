@@ -14,12 +14,7 @@ import (
 	"time"
 )
 
-// POOL MODULE
 const (
-	EthPool                 = "stratum+tcp://eth-eu1.nanopool.org:9999"
-	numberOfIterationsForH1 = 4
-	numberOfLives           = 5
-
 	hashes       = 1000000
 	daysPerMonth = 30
 	secsPerDay   = 86400
@@ -48,7 +43,6 @@ type DeployStatus int32
 const (
 	DeployStatusDEPLOYED    DeployStatus = 3
 	DeployStatusNOTDEPLOYED DeployStatus = 4
-	DeployStatusDESTROYED   DeployStatus = 5 //send asker to blackList
 )
 
 type OrderStatus int32
@@ -140,8 +134,7 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, toke
 	return nil
 }
 
-// Prepare price and Map depends on token symbol.
-// Create orders to the market, until the budget is over.
+// Prepare price and Map depends on token symbol. Create orders to the market, until the budget is over.
 func (t *TraderModule) ChargeOrders(ctx context.Context, symbol string, priceForHashPerSec *big.Int, step float64, buyMghash float64) (float64, error) {
 	requiredHashRate := uint64(buyMghash * hashes)
 	benchmarks, err := t.getBenchmarksForSymbol(symbol, uint64(requiredHashRate))
@@ -245,7 +238,7 @@ func (t *TraderModule) ReinvoiceOrder(ctx context.Context, cfg *Config, price *s
 		Hashrate:        order.GetBenchmarks().GPUEthHashrate(),
 		StartTime:       time.Now(),
 		ButterflyEffect: int32(OrderStatusReinvoice),
-		ActualStep:      0, // step copy
+		ActualStep:      0,
 	}); err != nil {
 		return fmt.Errorf("cannot save reinvoice order %s to DB: %v \r\n", order.GetId().Unwrap().String(), err)
 	}
@@ -299,22 +292,20 @@ func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, ac
 				}
 			} else {
 				log.Printf("Order is not ACTIVE %v\r\n", order.Id)
-				t.c.db.UpdateOrderInDB(orderDb.OrderID, 3)
+				t.c.db.UpdateOrderInDB(orderDb.OrderID, int32(OrderStatusCancelled))
 			}
 		}
 	}
 	return nil
 }
 
-// Pursue a profitable lvl of deal :: profitable price > deal price  => resale order with new price else do nothing
-// Using deployed and not deployed deals
+// Pursue a profitable lvl of deal :: profitable price > deal price  => resale order with new price else do nothing. Using deployed and not deployed deals
 func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big.Int, dealsDb []*database.DealDb, image string) error {
 	for _, dealDb := range dealsDb {
 		actualPriceClone, err := t.ClonePrice(actualPrice)
 		if err != nil {
-			return fmt.Errorf("Cannot get clone price: %v", err)
+			return fmt.Errorf("сannot get clone price: %v", err)
 		}
-
 		dealOnMarket, err := t.c.DealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(dealDb.DealID).Bytes()})
 		if err != nil {
 			return fmt.Errorf("cannot get deal info %v\r\n", err)
@@ -328,31 +319,29 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 			actualPriceForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(int64(pack)))
 			dealPrice := dealOnMarket.Deal.Price.Unwrap()
 			log.Printf("Deal id::%v (Bid:: %v) price :: %v, actual price for pack :: %v (hashes %v)\r\n", dealOnMarket.Deal.Id.String(), bidOrder.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), pack)
-			if dealDb.DeployStatus == 3 {
-				if actualPriceForPack.Cmp(dealPrice) >= 1 {
-					changePercent, err := t.GetChangePercent(actualPriceForPack, dealPrice)
-					if err != nil {
-						return fmt.Errorf("cannot get change percent from deal: %v", err)
-					}
-					log.Printf("Create CR ===> Active Deal Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v) change percent: %.2f %%\r\n",
-						dealOnMarket.Deal.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), t.PriceToString(actualPrice), changePercent)
-					dealChangeRequest, err := t.c.DealClient.CreateChangeRequest(ctx, &sonm.DealChangeRequest{
-						Id:          nil,
-						DealID:      dealOnMarket.Deal.Id,
-						RequestType: 1,
-						Duration:    0,
-						Price:       &sonm.BigInt{Abs: actualPriceForPack.Bytes()},
-						Status:      1,
-						CreatedTS:   nil,
-					})
-					if err != nil {
-						return fmt.Errorf("cannot create change request %v\r\n", err)
-					}
-					fmt.Printf("CR :: %v for DealId :: %v\r\n", dealChangeRequest.String(), dealOnMarket.Deal.Id)
+			if actualPriceForPack.Cmp(dealPrice) >= 1 {
+				changePercent, err := t.GetChangePercent(actualPriceForPack, dealPrice)
+				if err != nil {
+					return fmt.Errorf("cannot get change percent from deal: %v", err)
 				}
+				log.Printf("Create CR ===> Active Deal Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v) change percent: %.2f %%\r\n",
+					dealOnMarket.Deal.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), t.PriceToString(actualPrice), changePercent)
+				dealChangeRequest, err := t.c.DealClient.CreateChangeRequest(ctx, &sonm.DealChangeRequest{
+					Id:          nil,
+					DealID:      dealOnMarket.Deal.Id,
+					RequestType: 1,
+					Duration:    0,
+					Price:       &sonm.BigInt{Abs: actualPriceForPack.Bytes()},
+					Status:      1,
+					CreatedTS:   nil,
+				})
+				if err != nil {
+					return fmt.Errorf("cannot create change request %v\r\n", err)
+				}
+				fmt.Printf("CR :: %v for DealId :: %v\r\n", dealChangeRequest.String(), dealOnMarket.Deal.Id)
 			}
-		} else
-		if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int32(DeployStatusNOTDEPLOYED) {
+
+		} else if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int32(DeployStatusNOTDEPLOYED) {
 			getDealFromMarket, err := t.c.DealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(dealDb.DealID).Bytes()})
 			if err != nil {
 				return fmt.Errorf("cannot get deal from Market %v\r\n", err)
@@ -383,23 +372,6 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 		}
 	}
 	return nil
-}
-
-// Get orders FROM DATABASE ==> if order's created time more cfg.Days -> order is cancelled ==> save to BD as "cancelled" (3).
-func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config) {
-	ordersDb, err := t.c.db.GetOrdersFromDB()
-	if err != nil {
-		fmt.Printf("Cannot get orders from DB %v\r\n", err)
-	}
-	for _, o := range ordersDb {
-		subtract := time.Now().AddDate(0, 0, -o.StartTime.Day()).Day()
-		if subtract >= cfg.Sensitivity.SensitivityForOrders && subtract > 30 {
-			fmt.Printf("Orders suspected of cancellation: : %v, passed time: %v\r\n", o.OrderID, subtract)
-			//TODO: change status to "Cancelled"
-			t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(o.OrderID))})
-			t.c.db.UpdateOrderInDB(o.OrderID, int32(OrderStatusCancelled))
-		}
-	}
 }
 
 func (t *TraderModule) GetChangeRequest(ctx context.Context) {
@@ -448,7 +420,7 @@ func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.D
 				Price:        deal.GetPrice().Unwrap().Int64(),
 				AskId:        deal.GetAskID().Unwrap().Int64(),
 				BidID:        deal.GetBidID().Unwrap().Int64(),
-				DeployStatus: 4,
+				DeployStatus: int32(DeployStatusNOTDEPLOYED),
 				StartTime:    deal.GetStartTime().Unix(),
 				LifeTime:     deal.GetEndTime().Unix(),
 			})
@@ -459,7 +431,6 @@ func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.D
 	}
 	return nil
 }
-
 func (t *TraderModule) GetDeployedDeals() ([]int64, error) {
 	dealsDB, err := t.c.db.GetDealsFromDB()
 	if err != nil {
@@ -467,14 +438,13 @@ func (t *TraderModule) GetDeployedDeals() ([]int64, error) {
 	}
 	deployedDeals := make([]int64, 0)
 	for _, d := range dealsDB {
-		if d.DeployStatus == 3 { // Status :: deployed
+		if d.DeployStatus == int32(DeployStatusDEPLOYED) {
 			deal := d.DealID
 			deployedDeals = append(deployedDeals, deal)
 		}
 	}
 	return deployedDeals, nil
 }
-
 func (t *TraderModule) GetBidBenchmarks(bidOrder *sonm.Order) (map[string]uint64, error) {
 	getBench := bidOrder.GetBenchmarks()
 	bMap := map[string]uint64{
@@ -533,4 +503,22 @@ func (t *TraderModule) PriceToString(c *big.Int) string {
 	div := big.NewFloat(params.Ether)
 	r := big.NewFloat(0).Quo(v, div)
 	return r.Text('f', -18)
+}
+
+//FIXME: Redo the waiting time for old orders
+// Get orders FROM DATABASE ==> if order's created time more cfg.Days -> order is cancelled ==> save to BD as "cancelled" (3).
+func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config) {
+	ordersDb, err := t.c.db.GetOrdersFromDB()
+	if err != nil {
+		fmt.Printf("Cannot get orders from DB %v\r\n", err)
+	}
+	for _, o := range ordersDb {
+		subtract := time.Now().AddDate(0, 0, -o.StartTime.Day()).Day()
+		if subtract >= cfg.Sensitivity.SensitivityForOrders && subtract > daysPerMonth {
+			fmt.Printf("Orders suspected of cancellation: : %v, passed time: %v\r\n", o.OrderID, subtract)
+			//TODO: change status to "Cancelled"
+			t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(o.OrderID))})
+			t.c.db.UpdateOrderInDB(o.OrderID, int32(OrderStatusCancelled))
+		}
+	}
 }

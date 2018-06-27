@@ -47,8 +47,7 @@ type sensitivityConfig struct {
 	PartBuffer               float64 `yaml:"part_buffer"`
 	OrdersChangePercent      float64 `yaml:"orders_change_percent"`
 	DealsChangePercent       float64 `yaml:"deals_change_percent"`
-	WorkerLimitChangePercent float64 `yaml:"worker_limit_change_percent"`
-	BadWorkersPercent        float64 `yaml:"bad_workers_percent"`
+	WorkerLimitChangePercent int     `yaml:"worker_limit_change_percent"`
 }
 type otherParameters struct {
 	IdentityForBid sonm.IdentityLevel `yaml:"identityForBid"`

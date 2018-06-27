@@ -22,7 +22,7 @@ type TokenWatcher interface {
 
 type PoolWatcher interface {
 	Watcher
-	GetData(addr string) (*ReportedHashrate, error)
+	GetData(addr string) (*ReturningData, error)
 }
 
 type BudgetWatcher interface {

@@ -25,12 +25,41 @@ type rendezvousClient struct {
 	conn net.Conn
 }
 
-func newRendezvousClient(ctx context.Context, addr auth.Addr, credentials credentials.TransportCredentials) (*rendezvousClient, error) {
+func newRendezvousClient(ctx context.Context, addr auth.Addr, creds credentials.TransportCredentials) (*rendezvousClient, error) {
 	targetAddr, err := addr.ETH()
 	if err != nil {
 		return nil, err
 	}
 
+	netAddr, err := addr.Addr()
+	if err != nil {
+		return nil, err
+	}
+
+	client, conn, err := connectToRendezvous(ctx, addr, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Discover(ctx, &sonm.HandshakeRequest{Addr: targetAddr.Bytes()})
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to discover rendezvous node: %s", err)
+	}
+
+	if resp.Addr != netAddr {
+		conn.Close()
+		client, conn, err := connectToRendezvous(ctx, auth.NewAddrRaw(targetAddr, netAddr), creds)
+		if err != nil {
+			return nil, err
+		}
+		return &rendezvousClient{client, conn}, nil
+	}
+
+	return &rendezvousClient{client, conn}, nil
+}
+
+func connectToRendezvous(ctx context.Context, addr auth.Addr, creds credentials.TransportCredentials) (rendezvous.Client, net.Conn, error) {
 	// Setting TCP keepalive is required, because NAT's conntrack can purge out
 	// idle connections for its internal garbage collection reasons at the most
 	// inopportune moment.
@@ -42,32 +71,21 @@ func newRendezvousClient(ctx context.Context, addr auth.Addr, credentials creden
 
 	netAddr, err := addr.Addr()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	conn, err := dialer.Dial(protocol, netAddr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	client, err := rendezvous.NewRendezvousClient(ctx, addr.String(), credentials, xgrpc.WithConn(conn))
+	client, err := rendezvous.NewRendezvousClient(ctx, addr.String(), creds, xgrpc.WithConn(conn))
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return nil, nil, err
 	}
 
-	resp, err := client.Discover(ctx, &sonm.HandshakeRequest{Addr: targetAddr.Bytes()})
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to Discover: %s", err)
-	}
-
-	if resp.Addr != netAddr {
-		conn.Close()
-		// connect to new addr
-	}
-
-	return &rendezvousClient{client, conn}, nil
+	return client, conn, nil
 }
 
 // LocalAddr returns the local network address.

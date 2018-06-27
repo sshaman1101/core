@@ -183,7 +183,7 @@ func (d *Database) UpdateBanStatusBlackListDB(masterID string, banStatus int32) 
 	return nil
 }
 
-func (d *Database) UpdateIterationPoolDB(id string, iteration int32) error {
+func (d *Database) UpdateIterationPoolDB(iteration int32, id string) error {
 	result, err := d.connect.Exec(updateIterationPool, iteration, id)
 	if err != nil {
 		return err

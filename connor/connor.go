@@ -92,8 +92,7 @@ func (c *Connor) Serve(ctx context.Context) error {
 	defer dataUpdate.Stop()
 	tradeUpdate := time.NewTicker(15 * time.Second)
 	defer tradeUpdate.Stop()
-	poolInit := time.NewTimer(900 * time.Second)
-	poolInit = time.NewTimer(900 * time.Second)
+	poolInit := time.NewTicker(900 * time.Second)
 	defer poolInit.Stop()
 
 	snm := watchers.NewSNMPriceWatcher(coinMarketCapSonmTicker)
@@ -184,7 +183,7 @@ func (c *Connor) Serve(ctx context.Context) error {
 					}
 				}
 			}
-			if err = poolModule.DefaultPoolHashrateTracking(ctx, reportedPool, avgPool); err != nil {
+			if err = poolModule.AdvancedPoolHashrateTracking(ctx, reportedPool, avgPool); err != nil {
 				return err
 			}
 		}

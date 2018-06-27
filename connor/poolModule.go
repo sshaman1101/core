@@ -127,7 +127,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 			}
 
 		} else {
-			p.UpdateAvgPoolData(ctx, avgPool, p.c.cfg.PoolAddress.EthPoolAddr)
+			p.UpdateAvgPoolData(ctx, avgPool, p.c.cfg.PoolAddress.EthPoolAddr+"/1")
 
 			log.Printf("Iteration for worker :: %v more than 4 == > get Avg Data", w.DealID)
 			changeAvgWorker := 100 - ((uint64(w.WorkerAvgHashrate*hashes) * 100) / bidHashrate)
@@ -135,7 +135,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 				return err
 			}
 		}
-		p.c.db.UpdateIterationPoolDB(w.DealID, iteration)
+		p.c.db.UpdateIterationPoolDB(iteration,w.DealID)
 	}
 	return nil
 }

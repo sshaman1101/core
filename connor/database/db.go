@@ -27,7 +27,29 @@ func (d *Database) CreateOrderDB() error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+func (d *Database) CreatePoolDB() error {
+	_, err := d.connect.Exec(pools)
+	if err != nil {
+		return err
+	}
 	// TODO: check error in result
+	return nil
+}
+func (d *Database) CreateDealsDB() error {
+	_, err := d.connect.Exec(deals)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *Database) CreateBlacklistDB() error {
+	_, err := d.connect.Exec(blacklist)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -38,6 +60,17 @@ func (d *Database) SaveDealIntoDB(deal *DealDb) error {
 	}
 	tx := d.connect.MustBegin()
 	tx.NamedExec(insertDeals, deal)
+	tx.Commit()
+	return nil
+}
+
+func (d *Database) SaveBlacklistIntoDB(blacklistData *BlackListDb) error {
+	_, err := d.connect.Exec(blacklist)
+	if err != nil {
+		return err
+	}
+	tx := d.connect.MustBegin()
+	tx.NamedExec(insertBlackList, blacklistData)
 	tx.Commit()
 	return nil
 }
@@ -78,11 +111,10 @@ func (d *Database) UpdateOrderInDB(id int64, bfly int32) error {
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
+	_, err = result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
 func (d *Database) UpdateDealInDB(id int64, deployStatus int32) error {
@@ -90,11 +122,10 @@ func (d *Database) UpdateDealInDB(id int64, deployStatus int32) error {
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
+	_, err = result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
 func (d *Database) UpdateWorkerStatusInPoolDB(id string, badGuy int32, timeUpdate time.Time) error {
@@ -102,11 +133,10 @@ func (d *Database) UpdateWorkerStatusInPoolDB(id string, badGuy int32, timeUpdat
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
+	_, err = result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
 func (d *Database) UpdateReportedHashratePoolDB(id string, reportedHashrate float64, timeUpdate time.Time) error {
@@ -114,11 +144,10 @@ func (d *Database) UpdateReportedHashratePoolDB(id string, reportedHashrate floa
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
+	_, err = result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
 func (d *Database) UpdateAvgPoolDB(id string, avgHashrate float64, timeUpdate time.Time) error {
@@ -126,23 +155,34 @@ func (d *Database) UpdateAvgPoolDB(id string, avgHashrate float64, timeUpdate ti
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
+	_, err = result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
+
+func (d *Database) UpdateBanStatusBlackListDB(masterID string, banStatus int32) error {
+	result, err := d.connect.Exec(updateBlackList, banStatus, masterID)
+	if err != nil {
+		return err
+	}
+	_, err = result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (d *Database) UpdateIterationPoolDB(id string, iteration int32) error {
 	result, err := d.connect.Exec(updateIterationPool, iteration, id)
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
+	_, err = result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("rows: %v\r\n", rowsAffected)
 	return nil
 }
 
@@ -163,7 +203,6 @@ func (d *Database) GetCountFromDB() (counts int, err error) {
 	}
 	return 0, fmt.Errorf("")
 }
-
 func (d *Database) GetLastActualStepFromDb() (float64, error) {
 	rows, err := d.connect.Query(getLastActualStep)
 	defer rows.Close()
@@ -171,14 +210,13 @@ func (d *Database) GetLastActualStepFromDb() (float64, error) {
 		log.Fatal(err)
 		return 0, err
 	}
-
+	defer rows.Close()
 	for rows.Next() {
 		var max float64
 		err = rows.Scan(&max)
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer rows.Close()
 		return max, nil
 	}
 	return 0, nil
@@ -204,6 +242,63 @@ func (d *Database) GetOrdersFromDB() ([]*OrderDb, error) {
 	}
 	return orders, err
 }
+func (d *Database) GetBlacklistFromDb(failSupplierID string) (string, error) {
+	rows, err := d.connect.Query(getSupplierIDFromBlackList, failSupplierID)
+	defer rows.Close()
+	if err != nil {
+		log.Fatal(err)
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var failSupplier string
+		err = rows.Scan(&failSupplier)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return failSupplier, nil
+	}
+	return "already in Blacklist", nil
+}
+
+func (d *Database) GetWorkerFromPoolDb(dealID string) (string, error) {
+	rows, err := d.connect.Query(getWorkerIDFromPool, dealID)
+	defer rows.Close()
+	if err != nil {
+		log.Fatal(err)
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dealID string
+		err = rows.Scan(&dealID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return dealID, nil
+	}
+	return "already in Pool!", nil
+}
+
+func (d *Database) GetCountFailSupplierFromDb(masterID string) (int64, error) {
+	rows, err := d.connect.Query(getCountSupplierIDFromBlackList, masterID)
+	defer rows.Close()
+	if err != nil {
+		log.Fatal(err)
+		return 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var failSupplier int64
+		err = rows.Scan(&failSupplier)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return failSupplier, nil
+	}
+	return 0, nil
+}
+
 func (d *Database) GetDealsFromDB() ([]*DealDb, error) {
 	rows, err := d.connect.Query(getDeals)
 	defer rows.Close()
@@ -235,7 +330,8 @@ func (d *Database) GetWorkersFromDB() ([]*PoolDb, error) {
 	workers := make([]*PoolDb, 0)
 	for rows.Next() {
 		worker := new(PoolDb)
-		err := rows.Scan(&worker.PoolId, &worker.PoolBalance, &worker.PoolHashrate, &worker.WorkerID, &worker.WorkerReportedHashrate, &worker.WorkerAvgHashrate, &worker.BadGuy, &worker.Iterations, &worker.TimeStart, &worker.TimeUpdate)
+		err := rows.Scan(&worker.DealID, &worker.PoolId, &worker.WorkerReportedHashrate,
+			&worker.WorkerAvgHashrate, &worker.BadGuy, &worker.Iterations, &worker.TimeStart, &worker.TimeUpdate)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -3,16 +3,20 @@ package database
 import "time"
 
 type PoolDb struct {
+	DealID                 string    `db:"DEAL_ID"`
 	PoolId                 string    `db:"POOL_ID"`
-	PoolBalance            float64   `db:"POOL_BALANCE"`
-	PoolHashrate           float64   `db:"POOL_HASH"`
-	WorkerID               string    `db:"W_ID"`
 	WorkerReportedHashrate float64   `db:"W_REP_HASH"`
 	WorkerAvgHashrate      float64   `db:"W_AVG_HASH"`
 	BadGuy                 int32     `db:"BAD_GUY"`
 	Iterations             int64     `db:"ITERATIONS"`
 	TimeStart              time.Time `db:"TIME_START"`
 	TimeUpdate             time.Time `db:"TIME_UPDATE"`
+}
+
+type BlackListDb struct {
+	MasterID       string `db:"MASTER_ID"`
+	FailSupplierId string `db:"FAIL_SUPPLIER_ID"`
+	BanStatus      int32  `db:"BAN_STATUS"`
 }
 
 type TokenDb struct {

@@ -15,14 +15,15 @@ import (
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"go.uber.org/zap"
+	"math/big"
 )
 
 const (
 	coinMarketCapTicker     = "https://api.coinmarketcap.com/v1/ticker/"
 	coinMarketCapSonmTicker = coinMarketCapTicker + "sonm/"
 	cryptoCompareCoinData   = "https://www.cryptocompare.com/api/data/coinsnapshotfullbyid/?id="
-	poolReportedHashRate    = "http://178.62.225.107:3000/v1/eth/reportedhashrates/"
-	poolAverageHashRate     = "http://178.62.225.107:3000/v1/eth/avghashrateworkers/"
+	poolReportedHashRate    = "https://api.nanopool.org/v1/eth/reportedhashrates/"
+	poolAverageHashRate     = "https://api.nanopool.org/v1/eth/avghashrateworkers/"
 )
 
 const (
@@ -31,11 +32,12 @@ const (
 )
 
 type Connor struct {
-	key         *ecdsa.PrivateKey
-	Market      sonm.MarketClient
-	TaskClient  sonm.TaskManagementClient
-	DealClient  sonm.DealManagementClient
-	TokenClient sonm.TokenManagementClient
+	key          *ecdsa.PrivateKey
+	Market       sonm.MarketClient
+	TaskClient   sonm.TaskManagementClient
+	DealClient   sonm.DealManagementClient
+	TokenClient  sonm.TokenManagementClient
+	MasterClient sonm.MasterManagementClient
 
 	cfg    *Config
 	db     *database.Database
@@ -62,6 +64,7 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 	connor.TaskClient = sonm.NewTaskManagementClient(nodeCC)
 	connor.DealClient = sonm.NewDealManagementClient(nodeCC)
 	connor.TokenClient = sonm.NewTokenManagementClient(nodeCC)
+	connor.MasterClient = sonm.NewMasterManagementClient(nodeCC)
 
 	connor.db, err = database.NewDatabaseConnect(driver, dataSource)
 	if err != nil {
@@ -151,7 +154,7 @@ func (c *Connor) Serve(ctx context.Context) error {
 			if len(deals) > 0 {
 				err = traderModule.DealsProfitTracking(ctx, actualPrice, deals, c.cfg.Images.Image)
 				if err != nil {
-					return err
+					return fmt.Errorf("cannot start deals profit tracking: %v", err)
 				}
 			}
 			orders, err := traderModule.c.db.GetOrdersFromDB()
@@ -161,12 +164,28 @@ func (c *Connor) Serve(ctx context.Context) error {
 			if len(orders) > 0 {
 				err = traderModule.OrdersProfitTracking(ctx, c.cfg, actualPrice, orders)
 				if err != nil {
-					return err
+					return fmt.Errorf("cannot start orders profit tracking: %v", err)
 				}
 			}
 		case <-poolInit.C:
-			poolModule.SavePoolDataToDb(ctx, reportedPool, c.cfg.PoolAddress.EthPoolAddr)
-			poolModule.PoolHashrateTracking(ctx, reportedPool, avgPool, c.cfg.PoolAddress.EthPoolAddr)
+			dealsDb, err := traderModule.c.db.GetDealsFromDB()
+			if err != nil {
+				return fmt.Errorf("cannot get deals from DB %v\r\n", err)
+			}
+			for _, dealDb := range dealsDb {
+				if dealDb.DeployStatus == int32(DeployStatusDEPLOYED) {
+					dealOnMarket, err := c.DealClient.Status(ctx, sonm.NewBigInt(big.NewInt(0).SetInt64(dealDb.DealID)))
+					if err != nil {
+						return fmt.Errorf("cannot get deal from market %v", dealDb.DealID)
+					}
+					if err = poolModule.AddWorkerToPoolDB(ctx, dealOnMarket, c.cfg.PoolAddress.EthPoolAddr); err != nil {
+						return err
+					}
+				}
+			}
+			if err = poolModule.DefaultPoolHashrateTracking(ctx, reportedPool, avgPool); err != nil {
+				return err
+			}
 		}
 	}
 

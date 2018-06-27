@@ -10,8 +10,8 @@ const (
 	updateOrders           = "UPDATE ORDERS SET BUTTERFLY_EFFECT = ?	 WHERE ID = ?"
 	updateDeals            = "UPDATE DEALS SET DEPLOY_STATUS = ?	 WHERE ID = ?"
 	updateStatusPoolDB     = "UPDATE POOLS SET BAD_GUY = ?, TIME_UPDATE = ? WHERE W_ID = ?"
-	updateReportedHashrate = "UPDATE POOLS SET W_REP_HASH = ?, TIME_UPDATE = ? WHERE W_ID = ?"
-	updateAvgPool          = "UPDATE POOLS SET W_AVG_HASH = ?, TIME_UPDATE = ? WHERE W_ID = ?"
+	updateReportedHashrate = "UPDATE POOLS SET W_REP_HASH = ?, TIME_UPDATE = ? WHERE DEAL_ID = ?"
+	updateAvgPool          = "UPDATE POOLS SET W_AVG_HASH = ?, TIME_UPDATE = ? WHERE DEAL_ID = ?"
 	updateBlackList        = "UPDATE BLACKLIST SET BAN_STATUS = ?, WHERE MASTER_ID = ?"
 	updateIterationPool    = "UPDATE POOLS SET ITERATIONS = ? WHERE W_ID = ?"
 

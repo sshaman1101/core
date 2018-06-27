@@ -49,9 +49,22 @@ type sensitivityConfig struct {
 	DealsChangePercent       float64 `yaml:"deals_change_percent"`
 	WorkerLimitChangePercent float64 `yaml:"worker_limit_change_percent"`
 	BadWorkersPercent        float64 `yaml:"bad_workers_percent"`
+	WaitingTimeCRSec         int64   `yaml:"waiting_time_change_request"`
 }
 type otherParameters struct {
 	IdentityForBid sonm.IdentityLevel `yaml:"identityForBid"`
+	EmailForPool   string             `yaml:"email"`
+}
+
+type typicalBenchmark struct {
+	RamSize           uint64 `yaml:"ram_size"`
+	CpuCores          uint64 `yaml:"cpu_cores"`
+	CpuSysbenchSingle uint64 `yaml:"cpu_sysbench_single"`
+	CpuSysbenchMulti  uint64 `yaml:"cpu_sysbench_multi"`
+	NetDownload       uint64 `yaml:"net_download"`
+	NetUpload         uint64 `yaml:"net_upload"`
+	GpuCount          uint64 `yaml:"gpu_count"`
+	GpuMem            uint64 `yaml:"gpu_mem"`
 }
 
 type Config struct {
@@ -65,6 +78,7 @@ type Config struct {
 	Sensitivity       sensitivityConfig     `yaml:"sensitivity"`
 	Images            imageConfig           `yaml:"images"`
 	OtherParameters   otherParameters       `yaml:"other parameters"`
+	Benchmark         typicalBenchmark      `yaml:"benchmark"`
 	Eth               accounts.EthConfig    `yaml:"ethereum" required:"true"`
 	Log               logging.Config        `yaml:"log"`
 }

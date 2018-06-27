@@ -12,6 +12,15 @@ type Database struct {
 	connect *sqlx.DB
 }
 
+func (d *Database) DeleteOrder(id int64) error {
+	_, err := d.connect.Exec("DELETE FROM ORDERS WHERE ID=?", id)
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+
 func NewDatabaseConnect(driver, dataSource string) (*Database, error) {
 	var err error
 	d := &Database{}

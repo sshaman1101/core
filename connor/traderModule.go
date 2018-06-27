@@ -287,7 +287,7 @@ func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, ac
 						return err
 					}
 					tag := strconv.Itoa(int(orderDb.OrderID))
-					t.ReinvoiceOrder(ctx, cfg, &sonm.Price{PerSecond: sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice (update price): "+tag)
+					t.ReinvoiceOrder(ctx, cfg, &sonm.Price{PerSecond: sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice(update price): "+tag)
 					t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
 				}
 			} else {
@@ -318,7 +318,8 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 			pack := float64(bidOrder.Benchmarks.GPUEthHashrate()) / float64(hashes)
 			actualPriceForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(int64(pack)))
 			dealPrice := dealOnMarket.Deal.Price.Unwrap()
-			log.Printf("Deal id::%v (Bid:: %v) price :: %v, actual price for pack :: %v (hashes %v)\r\n", dealOnMarket.Deal.Id.String(), bidOrder.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), pack)
+			log.Printf("Deal id::%v (Bid:: %v) price :: %v, actual price for pack :: %v (hashes %v)\r\n",
+				dealOnMarket.Deal.Id.String(), bidOrder.Id.String(), t.PriceToString(dealPrice), t.PriceToString(actualPriceForPack), pack)
 			if actualPriceForPack.Cmp(dealPrice) >= 1 {
 				changePercent, err := t.GetChangePercent(actualPriceForPack, dealPrice)
 				if err != nil {
@@ -331,13 +332,14 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 					DealID:      dealOnMarket.Deal.Id,
 					RequestType: 1,
 					Duration:    0,
-					Price:       &sonm.BigInt{Abs: actualPriceForPack.Bytes()},
+					Price:       &sonm.BigInt{Abs: actualPriceForPack.Bytes()}, //TODO: !!!
 					Status:      1,
 					CreatedTS:   nil,
 				})
 				if err != nil {
 					return fmt.Errorf("cannot create change request %v\r\n", err)
 				}
+				go t.GetChangeRequest(ctx, dealOnMarket)
 				fmt.Printf("CR :: %v for DealId :: %v\r\n", dealChangeRequest.String(), dealOnMarket.Deal.Id)
 			}
 
@@ -348,7 +350,7 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 			}
 			deal := getDealFromMarket.Deal
 
-			log.Printf("Deploying NEW CONTAINER ==> for dealDB %v (deal on market: %v\r\n)", dealDb.DealID, deal.GetId().Unwrap().String())
+			log.Printf("Deploying NEW CONTAINER ==> for dealDB %v (deal on market: %v)\r\n", dealDb.DealID, deal.GetId().Unwrap().String())
 			task, err := t.pool.DeployNewContainer(ctx, t.c.cfg, deal, image)
 			if err != nil {
 				t.c.db.UpdateDealInDB(deal.Id.Unwrap().Int64(), int32(DeployStatusNOTDEPLOYED))
@@ -368,14 +370,27 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 				fmt.Printf("Cannot get benchmarks from bid Order : %v\r\n", bidOrder.Id.Unwrap().Int64())
 				return err
 			}
-			t.ReinvoiceOrder(ctx, t.c.cfg, &sonm.Price{PerSecond: deal.GetPrice()}, bench, "Reinvoice(response by activeDeal)")
+			t.ReinvoiceOrder(ctx, t.c.cfg, &sonm.Price{PerSecond: deal.GetPrice()}, bench, "Reinvoice(active deal)")
 		}
 	}
 	return nil
 }
 
-func (t *TraderModule) GetChangeRequest(ctx context.Context) {
-	//TODO : Create check ChangeRequest status (by approve)
+func (t *TraderModule) GetChangeRequest(ctx context.Context, dealChangeRequest *sonm.DealInfoReply) error {
+	time.Sleep(time.Duration(t.c.cfg.Sensitivity.WaitingTimeCRSec))
+	requestsList, err := t.c.DealClient.ChangeRequestsList(ctx, dealChangeRequest.Deal.Id)
+	if err != nil {
+		return err
+	}
+	for _, cr := range requestsList.Requests {
+		if cr.DealID == dealChangeRequest.Deal.Id && cr.Status == sonm.ChangeRequestStatus_REQUEST_REJECTED {
+			t.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
+				Id: dealChangeRequest.Deal.Id,
+			})
+		}
+	}
+	return nil
+
 }
 
 func (t *TraderModule) ClonePrice(def *big.Int) (*big.Int, error) {
@@ -468,14 +483,14 @@ func (t *TraderModule) FloatToBigInt(val float64) *big.Int {
 // Init benchmarks
 func (t *TraderModule) newBaseBenchmarks() map[string]uint64 {
 	return map[string]uint64{
-		"ram-size":            1000000,
-		"cpu-cores":           1,
-		"cpu-sysbench-single": 800,
-		"cpu-sysbench-multi":  1000,
-		"net-download":        1000,
-		"net-upload":          1000,
-		"gpu-count":           1,
-		"gpu-mem":             4096000000,
+		"ram-size":            t.c.cfg.Benchmark.RamSize,
+		"cpu-cores":           t.c.cfg.Benchmark.CpuCores,
+		"cpu-sysbench-single": t.c.cfg.Benchmark.CpuSysbenchSingle,
+		"cpu-sysbench-multi":  t.c.cfg.Benchmark.CpuSysbenchMulti,
+		"net-download":        t.c.cfg.Benchmark.NetDownload,
+		"net-upload":          t.c.cfg.Benchmark.NetUpload,
+		"gpu-count":           t.c.cfg.Benchmark.GpuCount,
+		"gpu-mem":             t.c.cfg.Benchmark.GpuMem,
 	}
 }
 func (t *TraderModule) newBenchmarksWithGPU(ethHashRate uint64) map[string]uint64 {

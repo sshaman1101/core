@@ -41,6 +41,7 @@ func (p *PoolModule) DeployNewContainer(ctx context.Context, cfg *Config, deal *
 		"ETH_POOL": EthPool,
 		"WALLET":   cfg.PoolAddress.EthPoolAddr,
 		"WORKER":   deal.Id.String(),
+		"EMAIL":    p.c.cfg.OtherParameters.EmailForPool,
 	}
 	container := &sonm.Container{
 		Image: image,
@@ -171,6 +172,7 @@ func (p *PoolModule) UpdateRHPoolData(ctx context.Context, poolRHData watchers.P
 
 	for _, rh := range dataRH.Data {
 		p.c.db.UpdateReportedHashratePoolDB(rh.Worker, rh.Hashrate, time.Now())
+		log.Printf("Update RH in DB %v, %v, %v\r\n", rh.Worker, rh.Hashrate, time.Now())
 	}
 	return nil
 }
@@ -239,7 +241,7 @@ func (p *PoolModule) ReturnBidHashrateForDeal(ctx context.Context, dealInfo *son
 func (p *PoolModule) DestroyDeal(ctx context.Context, dealInfo *sonm.DealInfoReply) error {
 	p.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
 		Id:            dealInfo.Deal.Id,
-		BlacklistType: 1,
+		BlacklistType: sonm.BlacklistType_BLACKLIST_MASTER,
 	})
 	log.Printf("This deal is destroyed (Pidor more than 5) : %v!\r\n", dealInfo.Deal.Id)
 	return nil

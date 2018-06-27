@@ -93,6 +93,7 @@ func (c *Connor) Serve(ctx context.Context) error {
 	tradeUpdate := time.NewTicker(15 * time.Second)
 	defer tradeUpdate.Stop()
 	poolInit := time.NewTimer(900 * time.Second)
+	poolInit = time.NewTimer(900 * time.Second)
 	defer poolInit.Stop()
 
 	snm := watchers.NewSNMPriceWatcher(coinMarketCapSonmTicker)

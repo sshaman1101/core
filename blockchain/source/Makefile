@@ -42,15 +42,20 @@ coverage:
 deploy:
 	${TRUFFLE} migrate --network private
 
-liveDeploy:
+liveMasterDeploy:
 	mv migrations tmp_dir
 	mv live-deploy-scripts migrations
-	${TRUFFLE} migrate --network privateLive
 	${TRUFFLE} migrate --network master
 	mv migrations live-deploy-scripts
 	mv tmp_dir migrations
+	echo "DONT FORGET TO SET KEEPER ADDRESS"
 
-
+liveSideDeploy:
+	mv migrations tmp_dir
+        mv live-deploy-scripts migrations
+        ${TRUFFLE} migrate --network privateLive
+        mv migrations live-deploy-scripts
+        mv tmp_dir migrations
 clean:
 	@rm -rf build
 

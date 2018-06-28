@@ -130,7 +130,7 @@ func (d *Database) UpdateDealInDB(id int64, deployStatus int32) error {
 	}
 	return nil
 }
-func (d *Database) UpdateWorkerStatusInPoolDB(id string, badGuy int32, timeUpdate time.Time) error {
+func (d *Database) UpdateWorkerStatusInPoolDB(id int64, badGuy int32, timeUpdate time.Time) error {
 	_, err := d.connect.Exec(updateStatusPoolDB, badGuy, timeUpdate, id)
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func (d *Database) UpdateBanStatusBlackListDB(masterID string, banStatus int32) 
 	return nil
 }
 
-func (d *Database) UpdateIterationPoolDB(iteration int32, id string) error {
+func (d *Database) UpdateIterationPoolDB(iteration int32, id int64) error {
 	_, err := d.connect.Exec(updateIterationPool, iteration, id)
 	if err != nil {
 		return err

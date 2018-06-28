@@ -2,9 +2,7 @@ package connor
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"strconv"
 	"time"
 
 	"github.com/sonm-io/core/connor/database"
@@ -74,7 +72,7 @@ func (p *PoolModule) AddWorkerToPoolDB(ctx context.Context, deal *sonm.DealInfoR
 		return nil
 	}
 	if err := p.c.db.SavePoolIntoDB(&database.PoolDb{
-		DealID:    deal.Deal.Id.String(),
+		DealID:    deal.Deal.Id.Unwrap().Int64(),
 		PoolID:    addr,
 		TimeStart: time.Now(),}); err != nil {
 		return err
@@ -96,12 +94,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 			continue
 		}
 		iteration := int32(w.Iterations + 1)
-		wId, err := strconv.Atoi(w.DealID)
-		if err != nil {
-			return fmt.Errorf("cannot atoi returns %v", err)
-		}
-
-		dealInfo, err := p.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(int64(wId)))
+		dealInfo, err := p.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(w.DealID))
 		if err != nil {
 			log.Printf("Cannot get deal from market %v\r\n", w.DealID)
 			return err
@@ -218,7 +211,7 @@ func (p *PoolModule) SendToConnorBlackList(ctx context.Context, failedDeal *sonm
 	if percentFailWorkers > p.c.cfg.Sensitivity.BadWorkersPercent {
 		p.DestroyDeal(ctx, failedDeal)
 		p.c.db.UpdateBanStatusBlackListDB(failedDeal.Deal.MasterID.String(), int32(BanStatusMASTERBAN))
-		p.c.db.UpdateWorkerStatusInPoolDB(failedDeal.Deal.Id.String(), int32(BanStatusWorkerInPool), time.Now())
+		p.c.db.UpdateWorkerStatusInPoolDB(failedDeal.Deal.Id.Unwrap().Int64(), int32(BanStatusWorkerInPool), time.Now())
 	}
 	return nil
 }

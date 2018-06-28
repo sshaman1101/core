@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -173,7 +172,7 @@ func (c *Connor) Serve(ctx context.Context) error {
 				return fmt.Errorf("cannot get deals from DB %v\r\n", err)
 			}
 			for _, dealDb := range dealsDb {
-				if dealDb.DeployStatus == int32(DeployStatusDEPLOYED) {
+				if dealDb.DeployStatus == int64(DeployStatusDEPLOYED) {
 					dealOnMarket, err := c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
 					if err != nil {
 						return fmt.Errorf("cannot get deal from market %v", dealDb.DealID)

@@ -5,6 +5,7 @@ import (
 	"github.com/sonm-io/core/connor/watchers"
 	"log"
 	"math/big"
+	"strconv"
 	"time"
 )
 
@@ -65,9 +66,13 @@ func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([
 		}
 		netHashesPerSec := int64(tokenData.NetHashPerSec)
 		token.ProfitPerMonthUsd = p.CalculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, float64(netHashesPerSec), tokenData.BlockReward, divider, tokenData.BlockTime)
+		id, err := strconv.Atoi(tokenData.CmcID)
+		if err !=nil{
+			return nil, err
+		}
 		if token.Symbol == "ETH" {
 			p.c.db.SaveProfitToken(&database.TokenDb{
-				ID:              tokenData.CmcID,
+				ID:              int64(id),
 				Name:            token.Symbol,
 				UsdPrice:        tokenData.PriceUSD,
 				NetHashesPerSec: tokenData.NetHashPerSec,

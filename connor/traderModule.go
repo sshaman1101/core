@@ -311,7 +311,7 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 		if err != nil {
 			return fmt.Errorf("cannot get deal info %v\r\n", err)
 		}
-		if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int32(DeployStatusDEPLOYED) {
+		if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int64(DeployStatusDEPLOYED) {
 			bidOrder, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: dealOnMarket.Deal.BidID.Unwrap().String()})
 			if err != nil {
 				return err
@@ -344,7 +344,7 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 				fmt.Printf("CR :: %v for DealId :: %v\r\n", dealChangeRequest.String(), dealOnMarket.Deal.Id)
 			}
 
-		} else if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int32(DeployStatusNOTDEPLOYED) {
+		} else if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int64(DeployStatusNOTDEPLOYED) {
 			getDealFromMarket, err := t.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
 			if err != nil {
 				return fmt.Errorf("cannot get deal from Market %v\r\n", err)
@@ -436,7 +436,7 @@ func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.D
 				Price:        deal.GetPrice().Unwrap().Int64(),
 				AskID:        deal.GetAskID().Unwrap().Int64(),
 				BidID:        deal.GetBidID().Unwrap().Int64(),
-				DeployStatus: int32(DeployStatusNOTDEPLOYED),
+				DeployStatus: int64(DeployStatusNOTDEPLOYED),
 				StartTime:    deal.GetStartTime().Unix(),
 				LifeTime:     deal.GetEndTime().Unix(),
 			})
@@ -454,7 +454,7 @@ func (t *TraderModule) GetDeployedDeals() ([]int64, error) {
 	}
 	deployedDeals := make([]int64, 0)
 	for _, d := range dealsDB {
-		if d.DeployStatus == int32(DeployStatusDEPLOYED) {
+		if d.DeployStatus == int64(DeployStatusDEPLOYED) {
 			deal := d.DealID
 			deployedDeals = append(deployedDeals, deal)
 		}

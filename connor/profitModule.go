@@ -1,6 +1,8 @@
 package connor
 
 import (
+	"fmt"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"log"
@@ -57,7 +59,7 @@ func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([
 	for _, token := range tokensForCalc {
 		tokenData, err := t.GetTokenData(token.Symbol)
 		if err != nil {
-			log.Printf("cannot get token data %v\r\n", err)
+			return nil, fmt.Errorf("cannot get token data %v\r\n", err)
 		}
 		hashesPerSecond, divider, ok := p.getHashPowerAndDividerForToken(tokenData.Symbol, tokenData.NetHashPerSec)
 		if !ok {
@@ -67,10 +69,10 @@ func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([
 		netHashesPerSec := int64(tokenData.NetHashPerSec)
 		token.ProfitPerMonthUsd = p.CalculateMiningProfit(tokenData.PriceUSD, hashesPerSecond, float64(netHashesPerSec), tokenData.BlockReward, divider, tokenData.BlockTime)
 		id, err := strconv.Atoi(tokenData.CmcID)
-		if err !=nil{
+		if err != nil {
 			return nil, err
 		}
-		if token.Symbol == "ETH" {
+		if token.Symbol == p.c.cfg.UsingToken.Token {
 			p.c.db.SaveProfitToken(&database.TokenDb{
 				ID:              int64(id),
 				Name:            token.Symbol,
@@ -93,7 +95,7 @@ func (p *ProfitableModule) CalculateMiningProfit(usd, hashesPerSecond, netHashes
 	miningShare := currentHashingPower / (netHashesPerSecond + currentHashingPower)
 	minedPerDay := miningShare * 86400 / float64(blockTime) * blockReward / div
 	powerCostPerDayUSD := (powerConsumption * 24) / 1000 * costPerkWh
-	returnPerDayUSD := (usd*float64(minedPerDay) - (usd * float64(minedPerDay) * 0.01)) - powerCostPerDayUSD
+	returnPerDayUSD := (usd*minedPerDay - (usd * minedPerDay * 0.01)) - powerCostPerDayUSD
 	perMonthUSD := float64(returnPerDayUSD * 30)
 	return perMonthUSD
 }
@@ -107,10 +109,10 @@ func (p *ProfitableModule) LimitChargeSNM(balance *big.Int, partCharge float64) 
 
 //converting snmBalance = > USD Balance
 func (p *ProfitableModule) ConvertingToUSDBalance(balanceSide *big.Int, snmPrice float64) float64 {
-	bal := balanceSide.Mul(balanceSide, big.NewInt(int64(snmPrice*1e18)))
-	bal = bal.Div(bal, big.NewInt(1e18))
-	d, e := bal.DivMod(bal, big.NewInt(1e18), big.NewInt(0))
+	bal := balanceSide.Mul(balanceSide, big.NewInt(int64(snmPrice*params.Ether)))
+	bal = bal.Div(bal, big.NewInt(params.Ether))
+	d, e := bal.DivMod(bal, big.NewInt(params.Ether), big.NewInt(0))
 	f, _ := big.NewFloat(0).SetInt(e).Float64()
-	res := float64(d.Int64()) + (f / 1e18)
+	res := float64(d.Int64()) + (f / params.Ether)
 	return res
 }

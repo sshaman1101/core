@@ -3,7 +3,7 @@ package database
 import "time"
 
 type PoolDb struct {
-	DealID                 int64    `db:"DEAL_ID"`
+	DealID                 int64     `db:"DEAL_ID"`
 	PoolID                 string    `db:"POOL_ID"`
 	WorkerReportedHashrate float64   `db:"W_REP_HASH"`
 	WorkerAvgHashrate      float64   `db:"W_AVG_HASH"`
@@ -20,7 +20,7 @@ type BlackListDb struct {
 }
 
 type TokenDb struct {
-	ID              int64    `db:"TOKEN_ID"`
+	ID              int64     `db:"TOKEN_ID"`
 	Name            string    `db:"NAME"`
 	UsdPrice        float64   `db:"USD_PRICE"`
 	NetHashesPerSec float64   `db:"NET_HASHES_SEC"`

@@ -68,7 +68,8 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 
 	balanceReply, err := connor.TokenClient.Balance(ctx, &sonm.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("Cannot load balanceReply %v\r\n", err)
+		connor.logger.Error("cannot load balanceReply", zap.Error(err))
+		return nil, err
 	}
 
 	connor.logger = ctxlog.GetLogger(ctx)
@@ -78,10 +79,14 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 	connor.logger.Info("Balance",
 		zap.String("live", balanceReply.GetLiveBalance().Unwrap().String()),
 		zap.String("Side", balanceReply.GetSideBalance().ToPriceString()))
+	connor.logger.Info("configuring Connor", zap.Any("config", cfg))
 	return connor, nil
 }
 
 func (c *Connor) Serve(ctx context.Context) error {
+	c.logger.Info("Connor started work ...")
+	defer c.logger.Info("Connor has been stopped")
+
 	dataUpdate := time.NewTicker(10 * time.Second)
 	defer dataUpdate.Stop()
 	tradeUpdate := time.NewTicker(15 * time.Second)
@@ -178,7 +183,7 @@ func (c *Connor) Serve(ctx context.Context) error {
 						return fmt.Errorf("cannot get deal from market %v", dealDb.DealID)
 					}
 					if err := poolModule.AddWorkerToPoolDB(ctx, dealOnMarket, c.cfg.PoolAddress.EthPoolAddr); err != nil {
-						return err
+						return fmt.Errorf("cannot add worker to Db : %v", err)
 					}
 				}
 			}

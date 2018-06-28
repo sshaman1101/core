@@ -2,12 +2,14 @@ package connor
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/proto"
+	"go.uber.org/zap"
 )
 
 const (
@@ -31,7 +33,7 @@ type BanStatus int32
 const (
 	BanStatusBANNED       BanStatus = 0
 	BanStatusMASTERBAN    BanStatus = 1
-	BanStatusWorkerInPool BanStatus = 6
+	BanStatusWORKERINPOOL BanStatus = 6
 )
 
 func (p *PoolModule) DeployNewContainer(ctx context.Context, cfg *Config, deal *sonm.Deal, image string) (*sonm.StartTaskReply, error) {
@@ -56,8 +58,7 @@ func (p *PoolModule) DeployNewContainer(ctx context.Context, cfg *Config, deal *
 	}
 	reply, err := p.c.TaskClient.Start(ctx, startTaskRequest)
 	if err != nil {
-		log.Printf("Cannot create start task request %s", err)
-		return nil, err
+		return nil, fmt.Errorf("cannot create start task request %s", err)
 	}
 	return reply, nil
 }
@@ -74,7 +75,7 @@ func (p *PoolModule) AddWorkerToPoolDB(ctx context.Context, deal *sonm.DealInfoR
 	if err := p.c.db.SavePoolIntoDB(&database.PoolDb{
 		DealID:    deal.Deal.Id.Unwrap().Int64(),
 		PoolID:    addr,
-		TimeStart: time.Now(),}); err != nil {
+		TimeStart: time.Now()}); err != nil {
 		return err
 	}
 	return nil
@@ -84,20 +85,18 @@ func (p *PoolModule) AddWorkerToPoolDB(ctx context.Context, deal *sonm.DealInfoR
 func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPool watchers.PoolWatcher, avgPool watchers.PoolWatcher) error {
 	workers, err := p.c.db.GetWorkersFromDB()
 	if err != nil {
-		log.Printf("cannot get worker from pool DB")
-		return err
+		return fmt.Errorf("cannot get worker from pool DB :: %v", err)
 	}
 
 	for _, w := range workers {
 		// FIXME: change value BadGuy in Db
-		if w.BadGuy > 5 {
+		if w.BadGuy > numberOfLives {
 			continue
 		}
 		iteration := int32(w.Iterations + 1)
 		dealInfo, err := p.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(w.DealID))
 		if err != nil {
-			log.Printf("Cannot get deal from market %v\r\n", w.DealID)
-			return err
+			return fmt.Errorf("cannot get deal from market %v\r\n", w.DealID)
 		}
 		bidHashrate, err := p.ReturnBidHashrateForDeal(ctx, dealInfo)
 		if err != nil {
@@ -116,8 +115,8 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 
 		} else {
 			p.UpdateAvgPoolData(ctx, avgPool, p.c.cfg.PoolAddress.EthPoolAddr+"/1")
-
-			log.Printf("Iteration for worker :: %v more than 4 == > get Avg Data", w.DealID)
+			p.c.logger.Info("Getting avg pool data for worker::",
+				zap.Int64("deal ::", w.DealID))
 			changeAvgWorker := 100 - ((uint64(w.WorkerAvgHashrate*hashes) * 100) / bidHashrate)
 			if err = p.DetectingDeviation(ctx, changeAvgWorker, w, dealInfo); err != nil {
 				return err
@@ -138,13 +137,15 @@ func (p *PoolModule) DetectingDeviation(ctx context.Context, changePercentDeviat
 			if err := p.DestroyDeal(ctx, dealInfo); err != nil {
 				return err
 			}
-			p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int32(BanStatusWorkerInPool), time.Now())
-			log.Printf("This deal is destroyed (bad status in Pool) : %v!\r\n", dealInfo.Deal.Id)
+			p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int32(BanStatusWORKERINPOOL), time.Now())
+			p.c.logger.Info("Destroy deal",
+				zap.String("bad status in Pool", dealInfo.Deal.Id.String()))
 		}
 	} else if changePercentDeviationWorker >= 20 {
 		p.DestroyDeal(ctx, dealInfo)
-		p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int32(BanStatusWorkerInPool), time.Now())
-		log.Printf("This deal is destroyed (Pidor more than 5) : %v!\r\n", dealInfo.Deal.Id)
+		p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int32(BanStatusWORKERINPOOL), time.Now())
+		p.c.logger.Info("Destroy deal",
+			zap.String("bad status in Pool", dealInfo.Deal.Id.String()))
 	}
 	return nil
 }
@@ -154,13 +155,16 @@ func (p *PoolModule) UpdateRHPoolData(ctx context.Context, poolRHData watchers.P
 	poolRHData.Update(ctx)
 	dataRH, err := poolRHData.GetData(addr)
 	if err != nil {
-		log.Printf("Cannot get data RH  --> %v\r\n", err)
+		p.c.logger.Warn("cannot get data RH", zap.Error(err))
 		return err
 	}
 
 	for _, rh := range dataRH.Data {
 		p.c.db.UpdateReportedHashratePoolDB(rh.Worker, rh.Hashrate, time.Now())
-		log.Printf("Update RH in DB %v, %v, %v\r\n", rh.Worker, rh.Hashrate, time.Now())
+		p.c.logger.Info("Update reported hashrate data in DB :: ",
+			zap.String("worker", rh.Worker),
+			zap.Float64("hashrate", rh.Hashrate),
+		)
 	}
 	return nil
 }
@@ -188,16 +192,16 @@ func (p *PoolModule) SendToConnorBlackList(ctx context.Context, failedDeal *sonm
 	}
 
 	for _, wM := range workerList.Workers {
-		val, err := p.c.db.GetBlacklistFromDb(wM.SlaveID.String())
+		val, err := p.c.db.GetBlacklistFromDb(wM.SlaveID.Unwrap().Hex())
 		if err != nil {
 			return err
 		}
-		if val == wM.SlaveID.String() {
+		if val == wM.SlaveID.Unwrap().Hex() {
 			continue
 		} else {
 			p.c.db.SaveBlacklistIntoDB(&database.BlackListDb{
-				MasterID:       wM.MasterID.String(),
-				FailSupplierId: wM.SlaveID.String(),
+				MasterID:       wM.MasterID.Unwrap().Hex(),
+				FailSupplierId: wM.SlaveID.Unwrap().Hex(),
 				BanStatus:      int32(BanStatusBANNED),
 			})
 		}
@@ -210,8 +214,8 @@ func (p *PoolModule) SendToConnorBlackList(ctx context.Context, failedDeal *sonm
 
 	if percentFailWorkers > p.c.cfg.Sensitivity.BadWorkersPercent {
 		p.DestroyDeal(ctx, failedDeal)
-		p.c.db.UpdateBanStatusBlackListDB(failedDeal.Deal.MasterID.String(), int32(BanStatusMASTERBAN))
-		p.c.db.UpdateWorkerStatusInPoolDB(failedDeal.Deal.Id.Unwrap().Int64(), int32(BanStatusWorkerInPool), time.Now())
+		p.c.db.UpdateBanStatusBlackListDB(failedDeal.Deal.MasterID.Unwrap().Hex(), int32(BanStatusMASTERBAN))
+		p.c.db.UpdateWorkerStatusInPoolDB(failedDeal.Deal.Id.Unwrap().Int64(), int32(BanStatusWORKERINPOOL), time.Now())
 	}
 	return nil
 }
@@ -231,6 +235,6 @@ func (p *PoolModule) DestroyDeal(ctx context.Context, dealInfo *sonm.DealInfoRep
 		Id:            dealInfo.Deal.Id,
 		BlacklistType: sonm.BlacklistType_BLACKLIST_MASTER,
 	})
-	log.Printf("This deal is destroyed (Pidor more than 5) : %v!\r\n", dealInfo.Deal.Id)
+	log.Printf("This deal is destroyed (the number of mistakes of a worker is too high) : %v!\r\n", dealInfo.Deal.Id)
 	return nil
 }

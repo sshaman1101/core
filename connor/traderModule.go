@@ -118,7 +118,7 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, toke
 		zap.String("Limit for Charge SNM :", t.PriceToString(limitChargeInSNM)),
 		zap.Float64("Limit for Charge USD :", limitChargeInUSD),
 		zap.Float64("Pack Price per month USD", pricePackMhInUSDPerMonth),
-		zap.Int("Sum orders per month", int(sumOrdersPerMonth)))
+		zap.Int64("Sum orders per month", int64(sumOrdersPerMonth)))
 
 	for i := 0; i < int(sumOrdersPerMonth); i++ {
 		if mhashForToken >= destination {
@@ -434,7 +434,7 @@ func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.D
 				DealID:       deal.GetId().Unwrap().Int64(),
 				Status:       int32(deal.GetStatus()),
 				Price:        deal.GetPrice().Unwrap().Int64(),
-				AskId:        deal.GetAskID().Unwrap().Int64(),
+				AskID:        deal.GetAskID().Unwrap().Int64(),
 				BidID:        deal.GetBidID().Unwrap().Int64(),
 				DeployStatus: int32(DeployStatusNOTDEPLOYED),
 				StartTime:    deal.GetStartTime().Unix(),
@@ -530,7 +530,7 @@ func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config)
 	}
 	for _, o := range ordersDb {
 		subtract := time.Now().AddDate(0, 0, -o.StartTime.Day()).Day()
-		if subtract >= cfg.Sensitivity.SensitivityForOrders && subtract > daysPerMonth {
+		if int64(subtract) >= cfg.Sensitivity.SensitivityForOrders && subtract > daysPerMonth {
 			fmt.Printf("Orders suspected of cancellation: : %v, passed time: %v\r\n", o.OrderID, subtract)
 			//TODO: change status to "Cancelled"
 			t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(o.OrderID))})

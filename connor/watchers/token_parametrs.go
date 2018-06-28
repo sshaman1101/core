@@ -28,7 +28,7 @@ type tokenSnapshot struct {
 		General struct {
 			ID                 string  `json:"ID"`
 			Symbol             string  `json:"Symbol"`
-			BlockTime          int     `json:"BlockTime"`
+			BlockTime          int64     `json:"BlockTime"`
 			NetHashesPerSecond float64 `json:"NetHashesPerSecond"`
 			BlockReward        float64 `json:"BlockReward"`
 		} `json:"General"`
@@ -141,7 +141,7 @@ func (p *tokenPriceWatcher) Update(ctx context.Context) error {
 type TokenParameters struct {
 	CmcID         string
 	Symbol        string
-	BlockTime     int
+	BlockTime     int64
 	BlockReward   float64
 	NetHashPerSec float64
 	PriceUSD      float64

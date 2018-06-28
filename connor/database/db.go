@@ -168,7 +168,7 @@ func (d *Database) UpdateIterationPoolDB(iteration int32, id string) error {
 	return nil
 }
 
-func (d *Database) GetCountFromDB() (counts int, err error) {
+func (d *Database) GetCountFromDB() (counts int64, err error) {
 	rows, err := d.connect.Query(getCountFromDb)
 	defer rows.Close()
 	if err != nil {
@@ -176,10 +176,10 @@ func (d *Database) GetCountFromDB() (counts int, err error) {
 		return 0, err
 	}
 	for rows.Next() {
-		var count int
+		var count int64
 		err = rows.Scan(&count)
 		if err != nil {
-			log.Fatal(err)
+			return 0, err
 		}
 		return count, nil
 	}
@@ -197,7 +197,7 @@ func (d *Database) GetLastActualStepFromDb() (float64, error) {
 		var max float64
 		err = rows.Scan(&max)
 		if err != nil {
-			log.Fatal(err)
+			return 0, err
 		}
 		return max, nil
 	}
@@ -215,7 +215,7 @@ func (d *Database) GetOrdersFromDB() ([]*OrderDb, error) {
 		order := new(OrderDb)
 		err := rows.Scan(&order.OrderID, &order.Price, &order.Hashrate, &order.StartTime, &order.ButterflyEffect, &order.ActualStep)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		orders = append(orders, order)
 	}
@@ -236,7 +236,7 @@ func (d *Database) GetBlacklistFromDb(failSupplierID string) (string, error) {
 		var failSupplier string
 		err = rows.Scan(&failSupplier)
 		if err != nil {
-			log.Fatal(err)
+			return "", err
 		}
 		return failSupplier, nil
 	}
@@ -255,7 +255,7 @@ func (d *Database) GetWorkerFromPoolDb(dealID string) (string, error) {
 		var dealID string
 		err = rows.Scan(&dealID)
 		if err != nil {
-			log.Fatal(err)
+			return "", err
 		}
 		return dealID, nil
 	}
@@ -266,7 +266,6 @@ func (d *Database) GetCountFailSupplierFromDb(masterID string) (int64, error) {
 	rows, err := d.connect.Query(getCountSupplierIDFromBlackList, masterID)
 	defer rows.Close()
 	if err != nil {
-		log.Fatal(err)
 		return 0, err
 	}
 	defer rows.Close()
@@ -274,7 +273,7 @@ func (d *Database) GetCountFailSupplierFromDb(masterID string) (int64, error) {
 		var failSupplier int64
 		err = rows.Scan(&failSupplier)
 		if err != nil {
-			log.Fatal(err)
+			return 0, err
 		}
 		return failSupplier, nil
 	}
@@ -291,9 +290,9 @@ func (d *Database) GetDealsFromDB() ([]*DealDb, error) {
 	deals := make([]*DealDb, 0)
 	for rows.Next() {
 		deal := new(DealDb)
-		err := rows.Scan(&deal.DealID, &deal.Status, &deal.Price, &deal.AskId, &deal.BidID, &deal.DeployStatus, &deal.StartTime, &deal.LifeTime)
+		err := rows.Scan(&deal.DealID, &deal.Status, &deal.Price, &deal.AskID, &deal.BidID, &deal.DeployStatus, &deal.StartTime, &deal.LifeTime)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		deals = append(deals, deal)
 	}
@@ -312,10 +311,10 @@ func (d *Database) GetWorkersFromDB() ([]*PoolDb, error) {
 	workers := make([]*PoolDb, 0)
 	for rows.Next() {
 		worker := new(PoolDb)
-		err := rows.Scan(&worker.DealID, &worker.PoolId, &worker.WorkerReportedHashrate,
+		err := rows.Scan(&worker.DealID, &worker.PoolID, &worker.WorkerReportedHashrate,
 			&worker.WorkerAvgHashrate, &worker.BadGuy, &worker.Iterations, &worker.TimeStart, &worker.TimeUpdate)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		workers = append(workers, worker)
 	}

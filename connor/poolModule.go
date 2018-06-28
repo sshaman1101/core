@@ -75,7 +75,7 @@ func (p *PoolModule) AddWorkerToPoolDB(ctx context.Context, deal *sonm.DealInfoR
 	} else {
 		p.c.db.SavePoolIntoDB(&database.PoolDb{
 			DealID:                 deal.Deal.Id.String(),
-			PoolId:                 addr,
+			PoolID:                 addr,
 			WorkerReportedHashrate: 0,
 			WorkerAvgHashrate:      0,
 			BadGuy:                 0,

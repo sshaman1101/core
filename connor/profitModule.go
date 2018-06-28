@@ -80,7 +80,7 @@ func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([
 	}
 	return tokensForCalc, nil
 }
-func (p *ProfitableModule) CalculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int) float64 {
+func (p *ProfitableModule) CalculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int64) float64 {
 	if div == 0 {
 		//todo:
 	}

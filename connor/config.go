@@ -40,7 +40,7 @@ type imageConfig struct {
 	Image string `yaml:"image"`
 }
 type sensitivityConfig struct {
-	SensitivityForOrders     int     `yaml:"reaction_to_aging_of_orders"`
+	SensitivityForOrders     int64     `yaml:"reaction_to_aging_of_orders"`
 	MarginAccounting         float64 `yaml:"margin_accounting"`
 	PartCharge               float64 `yaml:"part_charge"`
 	PartResale               float64 `yaml:"part_resale"`

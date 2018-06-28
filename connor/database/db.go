@@ -62,6 +62,32 @@ func (d *Database) CreateBlacklistDB() error {
 	}
 	return nil
 }
+func (d *Database) CreateTokenDb() error {
+	_, err := d.connect.Exec(tokens)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *Database) CreateAllTables() error {
+	if err := d.CreateTokenDb(); err != nil {
+		return fmt.Errorf("cannot create token DB %v", err)
+	}
+	if err := d.CreateDealsDB(); err != nil {
+		return fmt.Errorf("cannot create deals DB %v", err)
+	}
+	if err := d.CreateOrderDB(); err != nil {
+		return fmt.Errorf("cannot create orders DB %v", err)
+	}
+	if err := d.CreatePoolDB(); err != nil {
+		return fmt.Errorf("cannot create pool DB %v", err)
+	}
+	if err := d.CreateBlacklistDB(); err != nil {
+		return fmt.Errorf("cannot create blacklist DB %v", err)
+	}
+	return nil
+}
 
 func (d *Database) SaveDealIntoDB(deal *DealDb) error {
 	_, err := d.connect.Exec(deals)
@@ -290,7 +316,7 @@ func (d *Database) GetDealsFromDB() ([]*DealDb, error) {
 	deals := make([]*DealDb, 0)
 	for rows.Next() {
 		deal := new(DealDb)
-		err := rows.Scan(&deal.DealID, &deal.Status, &deal.Price, &deal.AskID, &deal.BidID, &deal.DeployStatus, &deal.StartTime, &deal.LifeTime)
+		err := rows.Scan(&deal.DealID, &deal.Status, &deal.Price, &deal.AskID, &deal.BidID, &deal.DeployStatus)
 		if err != nil {
 			return nil, err
 		}

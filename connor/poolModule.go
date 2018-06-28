@@ -114,7 +114,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 
 		} else {
 			p.UpdateAvgPoolData(ctx, avgPool, p.c.cfg.PoolAddress.EthPoolAddr+"/1")
-			p.c.logger.Info("Getting avg pool data for worker::", zap.Int64("deal ::", w.DealID))
+			p.c.logger.Info("Getting avg pool data for worker", zap.Int64("deal", w.DealID))
 			changeAvgWorker := 100 - ((uint64(w.WorkerAvgHashrate*hashes) * 100) / bidHashrate)
 			if err = p.DetectingDeviation(ctx, changeAvgWorker, w, dealInfo); err != nil {
 				return err

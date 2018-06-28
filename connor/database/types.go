@@ -38,8 +38,6 @@ type DealDb struct {
 	AskID        int64     `db:"ASK_ID"`
 	BidID        int64     `db:"BID_ID"`
 	DeployStatus int64     `db:"DEPLOY_STATUS"`
-	StartTime    time.Time `db:"START_TIME"`
-	LifeTime     time.Time `db:"LIFETIME"`
 }
 
 type OrderDb struct {

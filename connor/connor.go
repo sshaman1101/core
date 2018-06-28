@@ -87,6 +87,8 @@ func (c *Connor) Serve(ctx context.Context) error {
 	c.logger.Info("Connor started work ...")
 	defer c.logger.Info("Connor has been stopped")
 
+	c.ClearStart(ctx)
+
 	dataUpdate := time.NewTicker(10 * time.Second)
 	defer dataUpdate.Stop()
 	tradeUpdate := time.NewTicker(15 * time.Second)
@@ -144,31 +146,36 @@ func (c *Connor) Serve(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("cannot save active deals : %v\n", err)
 			}
-
 			_, pricePerSec, err := traderModule.GetPriceForTokenPerSec(token, c.cfg.UsingToken.Token)
 			if err != nil {
 				return fmt.Errorf("cannot get pricePerSec for token per sec %v\r\n", err)
 			}
-
 			actualPrice := traderModule.FloatToBigInt(pricePerSec)
-			deals, err := traderModule.c.db.GetDealsFromDB()
+
+			dealsDb, err := traderModule.c.db.GetDealsFromDB()
 			if err != nil {
 				return fmt.Errorf("cannot get deals from DB %v\r\n", err)
 			}
-			if len(deals) > 0 {
-				err := traderModule.DealsProfitTracking(ctx, actualPrice, deals, c.cfg.Images.Image)
-				if err != nil {
-					return fmt.Errorf("cannot start deals profit tracking: %v", err)
+			//TODO: последовательно или вместе? go-routines
+			for _, deal := range dealsDb {
+				if deal.Status == int64(DeployStatusNOTDEPLOYED) {
+					traderModule.ResponseToActiveDeals(ctx, deal, c.cfg.Images.Image)
+				}
+				if deal.Status == int64(DeployStatusDEPLOYED) {
+					traderModule.DeployedDealsProfitTrack(ctx, actualPrice, deal, c.cfg.Images.Image)
 				}
 			}
+
 			orders, err := traderModule.c.db.GetOrdersFromDB()
 			if err != nil {
 				return fmt.Errorf("cannot get orders from DB %v\r\n", err)
 			}
-			if len(orders) > 0 {
-				err := traderModule.OrdersProfitTracking(ctx, c.cfg, actualPrice, orders)
-				if err != nil {
-					return fmt.Errorf("cannot start orders profit tracking: %v", err)
+			for _, order := range orders {
+				if order.ButterflyEffect != 3 {
+					err := traderModule.OrdersProfitTracking(ctx, c.cfg, actualPrice, order);
+					if err != nil {
+						return fmt.Errorf("cannot start orders profit tracking: %v", err)
+					}
 				}
 			}
 		case <-poolInit.C:
@@ -193,6 +200,13 @@ func (c *Connor) Serve(ctx context.Context) error {
 		}
 	}
 
+}
+
+func (c *Connor) ClearStart(ctx context.Context) error {
+	if err := c.db.CreateAllTables(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func newCredentials(ctx context.Context, key *ecdsa.PrivateKey) (credentials.TransportCredentials, error) {

@@ -251,125 +251,157 @@ func (t *TraderModule) CmpChangeOfPrice(change float64, def float64) (int32, err
 	return 0, nil
 }
 
-func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, actualPrice *big.Int, ordersDb []*database.OrderDb) error {
-	actualPriceCur := big.NewInt(actualPrice.Int64())
-
-	for _, orderDb := range ordersDb {
-		actualPriceClone := big.NewInt(0).Set(actualPriceCur)
+// TODO: not cancelled orders
+func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, actualPrice *big.Int, orderDb *database.OrderDb) error {
 		order, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
 		if err != nil {
 			t.c.logger.Error("cannot get order from market", zap.Error(err))
 			return err
 		}
-		if orderDb.ButterflyEffect != int64(OrderStatusCANCELLED) {
-			if order.GetOrderStatus() == sonm.OrderStatus_ORDER_ACTIVE {
-				orderPrice := order.Price.Unwrap()
-				pack := int64(order.GetBenchmarks().GPUEthHashrate()) / hashes
-				pricePerSecForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(pack))
 
-				change, err := t.GetChangePercent(pricePerSecForPack, orderPrice)
-				if err != nil {
-					return fmt.Errorf("cannot get changes percent: %v", err)
-				}
+		switch order.GetOrderStatus() {
+		case sonm.OrderStatus_ORDER_ACTIVE:
+			pack := int64(order.GetBenchmarks().GPUEthHashrate()) / hashes
+			pricePerSecForPack := big.NewInt(0).Mul(actualPrice, big.NewInt(pack))
 
-				commandPrice, err := t.CmpChangeOfPrice(change, cfg.Sensitivity.OrdersChangePercent)
-				if commandPrice == 1 || commandPrice == -1 {
-					t.c.logger.Info("",
-						zap.Int64("Change price order Id", orderDb.OrderID),
-						zap.String("price", sonm.NewBigInt(orderPrice).ToPriceString()),
-						zap.String("price for pack", sonm.NewBigInt(pricePerSecForPack).ToPriceString()),
-						zap.String("actual price", sonm.NewBigInt(actualPrice).ToPriceString()),
-						zap.Float64("change percent", change))
-					bench, err := t.GetBidBenchmarks(order)
-					if err != nil {
-						return fmt.Errorf("Cannot get benchmarks from Order : %v\r\n", order.Id.Unwrap().Int64())
-					}
-					tag := strconv.Itoa(int(orderDb.OrderID))
-					t.ReinvoiceOrder(ctx, cfg, &sonm.Price{PerSecond: sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice(update price): "+tag)
-					t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
-				}
-			} else {
-				t.c.logger.Info("Order is not ACTIVE", zap.String("Id", order.Id.Unwrap().String()))
-				t.c.db.UpdateOrderInDB(orderDb.OrderID, int64(OrderStatusCANCELLED))
+			div := big.NewInt(0).Div(big.NewInt(0).Mul(pricePerSecForPack, big.NewInt(100)), order.Price.Unwrap())
+			if err != nil {
+				return fmt.Errorf("cannot get change percent from deal: %v", err)
 			}
+			changePricePercent, _ := big.NewFloat(0).SetInt64(div.Int64()).Float64()
+			sensitivity := t.c.cfg.Sensitivity.OrdersChangePercent
+
+			if changePricePercent > 100+sensitivity {
+				t.c.logger.Info("REINVOICE ORDER (HIGH PRICE) ",
+					zap.String("active orderID", order.Id.Unwrap().String()),
+					zap.String("order price", sonm.NewBigInt(order.Price.Unwrap()).ToPriceString()),
+					zap.String("actual price for pack", sonm.NewBigInt(pricePerSecForPack).ToPriceString()),
+					zap.String("actual price per second", sonm.NewBigInt(actualPrice).ToPriceString()),
+					zap.Float64("change percent", changePricePercent),
+					zap.Float64("sensitivity", 100+sensitivity))
+				bench, err := t.GetBidBenchmarks(order)
+				if err != nil {
+					return fmt.Errorf("Cannot get benchmarks from Order : %v\r\n", order.Id.Unwrap().Int64())
+				}
+				tag := strconv.Itoa(int(orderDb.OrderID))
+				t.ReinvoiceOrder(ctx, cfg, &sonm.Price{PerSecond: sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice(update price): "+tag)
+				t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
+			} else if changePricePercent < 100+sensitivity {
+				t.c.logger.Info("REINVOICE ORDER (LOW PRICE) ",
+					zap.String("active orderID", order.Id.Unwrap().String()),
+					zap.String("order price", sonm.NewBigInt(order.Price.Unwrap()).ToPriceString()),
+					zap.String("actual price for pack", sonm.NewBigInt(pricePerSecForPack).ToPriceString()),
+					zap.String("actual price per second", sonm.NewBigInt(actualPrice).ToPriceString()),
+					zap.Float64("change percent", changePricePercent),
+					zap.Float64("sensitivity", 100+sensitivity))
+
+			}
+		case sonm.OrderStatus_ORDER_INACTIVE:
+			t.c.logger.Info("Order is not ACTIVE", zap.String("Id", order.Id.Unwrap().String()))
+			t.c.db.UpdateOrderInDB(orderDb.OrderID, int64(OrderStatusCANCELLED))
 		}
+	return nil
+}
+
+//TODO: not deployed not closed
+//Deploy new container + reinvoice order
+func (t *TraderModule) ResponseToActiveDeals(ctx context.Context, dealDb *database.DealDb, image string) error {
+	dealOnMarket, err := t.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
+	if err != nil {
+		return fmt.Errorf("cannot get deal info %v\r\n", err)
+	}
+	task, err := t.pool.DeployNewContainer(ctx, t.c.cfg, dealOnMarket.Deal, image)
+	if err != nil {
+		t.c.db.UpdateDealInDB(dealOnMarket.Deal.Id.Unwrap().Int64(), int64(DeployStatusNOTDEPLOYED))
+		return fmt.Errorf("cannot deploy new container from task %s\r\n", err)
+	} else {
+		t.c.db.UpdateDealInDB(dealOnMarket.Deal.Id.Unwrap().Int64(), int64(DeployStatusDEPLOYED))
+		t.c.logger.Info("New deployed TASK", zap.String("task", task.GetId()), zap.String("deal", dealOnMarket.Deal.GetId().String()))
+	}
+
+	bidOrder, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: dealOnMarket.Deal.GetBidID().String()})
+	if err != nil {
+		return fmt.Errorf("cannot get order by Id: %v\r\n", err)
+	}
+	bench, err := t.GetBidBenchmarks(bidOrder)
+	if err != nil {
+		return fmt.Errorf("cannot get benchmarks from bid Order : %v\r\n", bidOrder.Id.Unwrap().Int64())
+	}
+	if err := t.ReinvoiceOrder(ctx, t.c.cfg, &sonm.Price{PerSecond: dealOnMarket.Deal.GetPrice()}, bench, "Reinvoice(active deal)"); err != nil {
+		return fmt.Errorf("cannot reinvoice order %v", err)
 	}
 	return nil
 }
 
-// Pursue a profitable lvl of deal :: profitable price > deal price  => resale order with new price else do nothing. Using deployed and not deployed deals
-func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big.Int, dealsDb []*database.DealDb, image string) error {
-	for _, dealDb := range dealsDb {
-		actualPriceClone := t.ClonePrice(actualPrice)
-		dealOnMarket, err := t.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
+//TODO: not closed not deployed deals
+//Compare deal price and new price. If the price went down create change request and get response.
+func (t *TraderModule) DeployedDealsProfitTrack(ctx context.Context, actualPrice *big.Int, dealDb *database.DealDb, image string) error {
+
+	dealOnMarket, err := t.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
+	if err != nil {
+		return fmt.Errorf("cannot get deal info %v\r\n", err)
+	}
+	bidOrder, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: dealOnMarket.Deal.BidID.Unwrap().String()})
+	if err != nil {
+		return err
+	}
+
+	pack := float64(bidOrder.Benchmarks.GPUEthHashrate()) / float64(hashes)
+	actualPriceForPack := big.NewInt(0).Mul(actualPrice, big.NewInt(int64(pack)))
+
+	dealPrice := dealOnMarket.Deal.Price.Unwrap()
+	div := big.NewInt(0).Div(big.NewInt(0).Mul(actualPriceForPack, big.NewInt(100)), dealPrice)
+	if err != nil {
+		return fmt.Errorf("cannot get change percent from deal: %v", err)
+	}
+	changePricePercent, _ := big.NewFloat(0).SetInt64(div.Int64()).Float64()
+	sensitivity := t.c.cfg.Sensitivity.DealsChangePercent
+
+	if changePricePercent > 100+sensitivity {
+		dealChangeRequest, err := t.CreateChangeRequest(ctx, dealOnMarket, actualPriceForPack)
 		if err != nil {
-			return fmt.Errorf("cannot get deal info %v\r\n", err)
+			return fmt.Errorf("cannot create change request %v\r\n", err)
 		}
-		if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int64(DeployStatusDEPLOYED) {
-			bidOrder, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: dealOnMarket.Deal.BidID.Unwrap().String()})
-			if err != nil {
-				return err
-			}
-			pack := float64(bidOrder.Benchmarks.GPUEthHashrate()) / float64(hashes)
-			actualPriceForPack := actualPriceClone.Mul(actualPriceClone, big.NewInt(int64(pack)))
-			dealPrice := dealOnMarket.Deal.Price.Unwrap()
-
-			if actualPriceForPack.Cmp(dealPrice) >= 1 {
-				changePercent, err := t.GetChangePercent(actualPriceForPack, dealPrice)
-				if err != nil {
-					return fmt.Errorf("cannot get change percent from deal: %v", err)
-				}
-				dealChangeRequest, err := t.c.DealClient.CreateChangeRequest(ctx, &sonm.DealChangeRequest{
-					Id:          nil,
-					DealID:      dealOnMarket.Deal.Id,
-					RequestType: sonm.OrderType_BID,
-					Duration:    0,
-					Price:       sonm.NewBigIntFromInt(actualPriceForPack.Int64()),
-					Status:      sonm.ChangeRequestStatus_REQUEST_CREATED,
-					CreatedTS:   nil,
-				})
-				if err != nil {
-					return fmt.Errorf("cannot create change request %v\r\n", err)
-				}
-				t.c.logger.Info("CREATE DEAL CHANGE REQUEST :: ", zap.String("CR ID ", dealChangeRequest.Unwrap().String()),
-					zap.String("active dealID: ", dealOnMarket.Deal.Id.String()),
-					zap.String("deal price :", sonm.NewBigInt(dealPrice).ToPriceString()),
-					zap.String("actual price for pack :", sonm.NewBigInt(actualPriceForPack).ToPriceString()),
-					zap.String("actual price", sonm.NewBigInt(actualPrice).ToPriceString()),
-					zap.Float64("change percent", changePercent))
-				go t.GetChangeRequest(ctx, dealOnMarket)
-			}
-
-		} else if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int64(DeployStatusNOTDEPLOYED) {
-			getDealFromMarket, err := t.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
-			if err != nil {
-				return fmt.Errorf("cannot get deal from Market %v\r\n", err)
-			}
-			deal := getDealFromMarket.Deal
-			t.c.logger.Info("Deploying NEW CONTAINER", zap.Int64("deal", dealDb.DealID))
-			task, err := t.pool.DeployNewContainer(ctx, t.c.cfg, deal, image)
-			if err != nil {
-				t.c.db.UpdateDealInDB(deal.Id.Unwrap().Int64(), int64(DeployStatusNOTDEPLOYED))
-				return fmt.Errorf("cannot deploy new container from task %s\r\n", err)
-			} else {
-				t.c.db.UpdateDealInDB(deal.Id.Unwrap().Int64(), int64(DeployStatusDEPLOYED))
-				t.c.logger.Info("New deployed TASK", zap.String("task", task.GetId()), zap.String("deal", deal.GetId().String()))
-			}
-
-			bidOrder, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: deal.GetBidID().String()})
-			if err != nil {
-				return fmt.Errorf("cannot get order by Id: %v\r\n", err)
-			}
-			bench, err := t.GetBidBenchmarks(bidOrder)
-			if err != nil {
-				return fmt.Errorf("cannot get benchmarks from bid Order : %v\r\n", bidOrder.Id.Unwrap().Int64())
-			}
-			if err := t.ReinvoiceOrder(ctx, t.c.cfg, &sonm.Price{PerSecond: deal.GetPrice()}, bench, "Reinvoice(active deal)"); err != nil {
-				return fmt.Errorf("cannot reinvoice order %v", err)
-			}
+		t.c.logger.Info("CREATE DEAL CHANGE REQUEST ",
+			zap.String("High Change Request::", dealChangeRequest.Unwrap().String()),
+			zap.String("active dealID", dealOnMarket.Deal.Id.Unwrap().String()),
+			zap.String("deal price", sonm.NewBigInt(dealPrice).ToPriceString()),
+			zap.String("actual price for pack", sonm.NewBigInt(actualPriceForPack).ToPriceString()),
+			zap.String("actual price per second", sonm.NewBigInt(actualPrice).ToPriceString()),
+			zap.Float64("change percent", changePricePercent),
+			zap.Float64("sensitivity", 100+sensitivity))
+	} else if changePricePercent < 100-sensitivity {
+		dealChangeRequest, err := t.CreateChangeRequest(ctx, dealOnMarket, actualPriceForPack)
+		if err != nil {
+			return fmt.Errorf("cannot create change request %v\r\n", err)
 		}
+		t.c.logger.Info("CREATE DEAL CHANGE REQUEST ",
+			zap.String("LOW Change Request::", dealChangeRequest.Unwrap().String()),
+			zap.String("active dealID", dealOnMarket.Deal.Id.Unwrap().String()),
+			zap.String("deal price", sonm.NewBigInt(dealPrice).ToPriceString()),
+			zap.String("actual price for pack", sonm.NewBigInt(actualPriceForPack).ToPriceString()),
+			zap.String("actual price per second", sonm.NewBigInt(actualPrice).ToPriceString()),
+			zap.Float64("change percent", changePricePercent),
+			zap.Float64("sensitivity", 100+sensitivity))
+		go t.GetChangeRequest(ctx, dealOnMarket)
 	}
 	return nil
+}
+
+func (t *TraderModule) CreateChangeRequest(ctx context.Context, dealOnMarket *sonm.DealInfoReply, actualPriceForPack *big.Int) (*sonm.BigInt, error) {
+	dealChangeRequest, err := t.c.DealClient.CreateChangeRequest(ctx, &sonm.DealChangeRequest{
+		Id:          nil,
+		DealID:      dealOnMarket.Deal.Id,
+		RequestType: sonm.OrderType_BID,
+		Duration:    0,
+		Price:       sonm.NewBigIntFromInt(actualPriceForPack.Int64()),
+		Status:      sonm.ChangeRequestStatus_REQUEST_CREATED,
+		CreatedTS:   nil,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot create change request %v\r\n", err)
+	}
+	return dealChangeRequest, nil
 }
 
 func (t *TraderModule) GetChangeRequest(ctx context.Context, dealChangeRequest *sonm.DealInfoReply) error {
@@ -379,37 +411,20 @@ func (t *TraderModule) GetChangeRequest(ctx context.Context, dealChangeRequest *
 		return err
 	}
 	for _, cr := range requestsList.Requests {
-		if cr.DealID == dealChangeRequest.Deal.Id && cr.Status == sonm.ChangeRequestStatus_REQUEST_REJECTED {
-			t.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
-				Id: dealChangeRequest.Deal.Id,
-			})
+		if cr.DealID == dealChangeRequest.Deal.Id {
+			if cr.Status == sonm.ChangeRequestStatus_REQUEST_ACCEPTED {
+				continue
+			} else {
+				t.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
+					Id: dealChangeRequest.Deal.Id,
+				})
+			}
 		}
 	}
 	return nil
 
 }
 
-func (t *TraderModule) ClonePrice(def *big.Int) *big.Int {
-	clone := big.NewInt(def.Int64())
-	return big.NewInt(0).Set(clone)
-}
-
-func (t *TraderModule) GetChangePercent(actualPriceForPack *big.Int, dealPrice *big.Int) (float64, error) {
-	newClone := t.ClonePrice(actualPriceForPack)
-	dealClone := t.ClonePrice(dealPrice)
-	div := big.NewFloat(params.Ether)
-
-	vNew := big.NewFloat(0).SetInt(newClone)
-	rNew := big.NewFloat(0).Quo(vNew, div)
-
-	vOld := big.NewFloat(0).SetInt(dealClone)
-	rOld := big.NewFloat(0).Quo(vOld, div)
-
-	fOld, _ := rOld.Float64()
-	fnew, _ := rNew.Float64()
-	delta := (fnew * 100) / fOld
-	return delta, nil
-}
 func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.DealManagementClient) error {
 	getDeals, err := dealCli.List(ctx, &sonm.Count{Count: 100})
 	if err != nil {
@@ -425,8 +440,6 @@ func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.D
 				AskID:        deal.GetAskID().Unwrap().Int64(),
 				BidID:        deal.GetBidID().Unwrap().Int64(),
 				DeployStatus: int64(DeployStatusNOTDEPLOYED),
-				StartTime:    deal.GetStartTime().Unix(),
-				LifeTime:     deal.GetEndTime().Unix(),
 			})
 		}
 	} else {
@@ -468,7 +481,6 @@ func (t *TraderModule) FloatToBigInt(val float64) *big.Int {
 	return big.NewInt(int64(price))
 }
 
-// Init benchmarks
 func (t *TraderModule) newBaseBenchmarks() map[string]uint64 {
 	return map[string]uint64{
 		"ram-size":            t.c.cfg.Benchmark.RamSize,
@@ -500,29 +512,4 @@ func (t *TraderModule) getBenchmarksForSymbol(symbol string, ethHashRate uint64)
 	default:
 		return nil, fmt.Errorf("cannot create benchmakes for symbol \"%s\"", symbol)
 	}
-}
-
-//FIXME: Redo the waiting time for old orders
-// Get orders FROM DATABASE ==> if order's created time more cfg.Days -> order is cancelled ==> save to BD as "cancelled" (3).
-func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config) {
-	ordersDb, err := t.c.db.GetOrdersFromDB()
-	if err != nil {
-		fmt.Printf("Cannot get orders from DB %v\r\n", err)
-	}
-	for _, o := range ordersDb {
-		subtract := time.Now().AddDate(0, 0, -o.StartTime.Day()).Day()
-		if int64(subtract) >= cfg.Sensitivity.SensitivityForOrders && subtract > daysPerMonth {
-			fmt.Printf("Orders suspected of cancellation: : %v, passed time: %v\r\n", o.OrderID, subtract)
-			//TODO: change status to "Cancelled"
-			t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(o.OrderID))})
-			t.c.db.UpdateOrderInDB(o.OrderID, int64(OrderStatusCANCELLED))
-		}
-	}
-}
-
-func (t *TraderModule) PriceToString(c *big.Int) string {
-	v := big.NewFloat(0).SetInt(c)
-	div := big.NewFloat(params.Ether)
-	r := big.NewFloat(0).Quo(v, div)
-	return r.Text('f', -18)
 }

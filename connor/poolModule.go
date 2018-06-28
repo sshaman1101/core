@@ -135,7 +135,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 				return err
 			}
 		}
-		p.c.db.UpdateIterationPoolDB(iteration,w.DealID)
+		p.c.db.UpdateIterationPoolDB(iteration, w.DealID)
 	}
 	return nil
 }

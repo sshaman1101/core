@@ -52,8 +52,8 @@ type sensitivityConfig struct {
 	WaitingTimeCRSec         int64   `yaml:"waiting_time_change_request"`
 }
 type otherParameters struct {
-	IdentityForBid sonm.IdentityLevel `yaml:"identityForBid"`
-	EmailForPool   string             `yaml:"email"`
+	IdentityForBid sonm.IdentityLevel `yaml:"identity_for_bid"`
+	EmailForPool   string             `yaml:"email_for_pool"`
 }
 
 type typicalBenchmark struct {
@@ -68,16 +68,16 @@ type typicalBenchmark struct {
 }
 
 type Config struct {
-	Market            marketConfig          `yaml:"market" required:"true"`
-	PoolAddress       poolAddressesConfig   `yaml:"pool accounts" required:"false"`
-	UsingToken        usingToken            `yaml:"using token"`
-	Distances         stepsConfig           `yaml:"step for token"`
-	ChargeIntervalETH chargeOrdersETHConfig `yaml:"charge orders interval"`
-	ChargeIntervalZEC chargeOrdersZECConfig `yaml:"charge orders ZEC interval"`
-	ChargeIntervalXMR chargeOrdersXMRConfig `yaml:"charge orders XMR interval"`
+	Market            marketConfig          `yaml:"market"_required:"true"`
+	PoolAddress       poolAddressesConfig   `yaml:"pool_accounts" required:"false"`
+	UsingToken        usingToken            `yaml:"using_token"`
+	Distances         stepsConfig           `yaml:"step_for_token"`
+	ChargeIntervalETH chargeOrdersETHConfig `yaml:"charge_orders_interval"`
+	ChargeIntervalZEC chargeOrdersZECConfig `yaml:"charge_orders_ZEC_interval"`
+	ChargeIntervalXMR chargeOrdersXMRConfig `yaml:"charge_orders_XMR_interval"`
 	Sensitivity       sensitivityConfig     `yaml:"sensitivity"`
 	Images            imageConfig           `yaml:"images"`
-	OtherParameters   otherParameters       `yaml:"other parameters"`
+	OtherParameters   otherParameters       `yaml:"other_parameters"`
 	Benchmark         typicalBenchmark      `yaml:"benchmark"`
 	Eth               accounts.EthConfig    `yaml:"ethereum" required:"true"`
 	Log               logging.Config        `yaml:"log"`

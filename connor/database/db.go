@@ -117,55 +117,35 @@ func (d *Database) SavePoolIntoDB(pool *PoolDb) error {
 }
 
 func (d *Database) UpdateOrderInDB(id int64, bfly int32) error {
-	result, err := d.connect.Exec(updateOrders, bfly, id)
-	if err != nil {
-		return err
-	}
-	_, err = result.RowsAffected()
+	_, err := d.connect.Exec(updateOrders, bfly, id)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 func (d *Database) UpdateDealInDB(id int64, deployStatus int32) error {
-	result, err := d.connect.Exec(updateDeals, deployStatus, id)
-	if err != nil {
-		return err
-	}
-	_, err = result.RowsAffected()
+	_, err := d.connect.Exec(updateDeals, deployStatus, id)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 func (d *Database) UpdateWorkerStatusInPoolDB(id string, badGuy int32, timeUpdate time.Time) error {
-	result, err := d.connect.Exec(updateStatusPoolDB, badGuy, timeUpdate, id)
-	if err != nil {
-		return err
-	}
-	_, err = result.RowsAffected()
+	_, err := d.connect.Exec(updateStatusPoolDB, badGuy, timeUpdate, id)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 func (d *Database) UpdateReportedHashratePoolDB(id string, reportedHashrate float64, timeUpdate time.Time) error {
-	result, err := d.connect.Exec(updateReportedHashrate, reportedHashrate, timeUpdate, id)
-	if err != nil {
-		return err
-	}
-	_, err = result.RowsAffected()
+	_, err := d.connect.Exec(updateReportedHashrate, reportedHashrate, timeUpdate, id)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 func (d *Database) UpdateAvgPoolDB(id string, avgHashrate float64, timeUpdate time.Time) error {
-	result, err := d.connect.Exec(updateAvgPool, avgHashrate, timeUpdate, id)
-	if err != nil {
-		return err
-	}
-	_, err = result.RowsAffected()
+	_, err := d.connect.Exec(updateAvgPool, avgHashrate, timeUpdate, id)
 	if err != nil {
 		return err
 	}
@@ -173,11 +153,7 @@ func (d *Database) UpdateAvgPoolDB(id string, avgHashrate float64, timeUpdate ti
 }
 
 func (d *Database) UpdateBanStatusBlackListDB(masterID string, banStatus int32) error {
-	result, err := d.connect.Exec(updateBlackList, banStatus, masterID)
-	if err != nil {
-		return err
-	}
-	_, err = result.RowsAffected()
+	_, err := d.connect.Exec(updateBlackList, banStatus, masterID)
 	if err != nil {
 		return err
 	}
@@ -185,11 +161,7 @@ func (d *Database) UpdateBanStatusBlackListDB(masterID string, banStatus int32) 
 }
 
 func (d *Database) UpdateIterationPoolDB(iteration int32, id string) error {
-	result, err := d.connect.Exec(updateIterationPool, iteration, id)
-	if err != nil {
-		return err
-	}
-	_, err = result.RowsAffected()
+	_, err := d.connect.Exec(updateIterationPool, iteration, id)
 	if err != nil {
 		return err
 	}

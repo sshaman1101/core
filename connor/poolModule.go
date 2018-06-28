@@ -230,10 +230,10 @@ func (p *PoolModule) DestroyDeal(ctx context.Context, dealInfo *sonm.DealInfoRep
 	if _, err := p.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
 		Id:            dealInfo.Deal.Id,
 		BlacklistType: sonm.BlacklistType_BLACKLIST_MASTER,
-	}); err !=nil{
+	}); err != nil {
 		p.c.logger.Error("couldn't finish deal", zap.Error(err))
 		return err
 	}
-	p.c.logger.Info("Destroyed deal", zap.String("deal",dealInfo.Deal.Id.Unwrap().String()))
+	p.c.logger.Info("Destroyed deal", zap.String("deal", dealInfo.Deal.Id.Unwrap().String()))
 	return nil
 }

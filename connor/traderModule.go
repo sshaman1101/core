@@ -3,7 +3,6 @@ package connor
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/big"
 	"strconv"
 	"time"

@@ -2,15 +2,14 @@ package connor
 
 import (
 	"fmt"
+	"math/big"
+	"strconv"
+	"time"
+
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"go.uber.org/zap"
-
-	"log"
-	"math/big"
-	"strconv"
-	"time"
 )
 
 // CALCULATE TOKENS

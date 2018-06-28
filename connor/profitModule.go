@@ -5,6 +5,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
+	"go.uber.org/zap"
+
 	"log"
 	"math/big"
 	"strconv"
@@ -63,7 +65,7 @@ func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([
 		}
 		hashesPerSecond, divider, ok := p.getHashPowerAndDividerForToken(tokenData.Symbol, tokenData.NetHashPerSec)
 		if !ok {
-			log.Printf("DEBUG :: cannot process tokenData %s, not in list\r\n", tokenData.Symbol)
+			p.c.logger.Info("cannot process tokenData", zap.String("token", tokenData.Symbol))
 			continue
 		}
 		netHashesPerSec := int64(tokenData.NetHashPerSec)

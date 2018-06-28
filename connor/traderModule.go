@@ -71,11 +71,10 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, toke
 
 	count, err := t.c.db.GetCountFromDB()
 	if err != nil {
-		log.Printf("Cannot get count from DB: %v", err)
-		return err
+		return fmt.Errorf("cannot get count from database %v", err)
 	}
 	if count == 0 {
-		log.Printf("Save TEST order cause DB is empty! \r\n")
+		t.c.logger.Info("Save TEST order cause DB is empty!")
 		if err := t.c.db.SaveOrderIntoDB(&database.OrderDb{
 			OrderID:         0,
 			Price:           0,
@@ -84,7 +83,7 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, toke
 			ButterflyEffect: 2,
 			ActualStep:      start,
 		}); err != nil {
-			fmt.Printf("Cannot save order into DB %v\r\n", err)
+			return fmt.Errorf("Cannot save order into DB %v\r\n", err)
 		}
 	}
 
@@ -276,19 +275,22 @@ func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, ac
 
 				commandPrice, err := t.CmpChangeOfPrice(change, cfg.Sensitivity.OrdersChangePercent)
 				if commandPrice == 1 || commandPrice == -1 {
-					log.Printf("Active Order Id: %v (price: %v), actual price for PACK: %v (for Mg/h :: %v)change percent: %.2f %%\r\n",
-						orderDb.OrderID, sonm.NewBigInt(orderPrice).ToPriceString(), sonm.NewBigInt(pricePerSecForPack).ToPriceString(), sonm.NewBigInt(actualPrice).ToPriceString(), change)
+					t.c.logger.Info("",
+						zap.Int64("Change price order Id", orderDb.OrderID),
+						zap.String("price", sonm.NewBigInt(orderPrice).ToPriceString()),
+						zap.String("price for pack", sonm.NewBigInt(pricePerSecForPack).ToPriceString()),
+						zap.String("actual price", sonm.NewBigInt(actualPrice).ToPriceString()),
+						zap.Float64("change percent", change))
 					bench, err := t.GetBidBenchmarks(order)
 					if err != nil {
-						fmt.Printf("Cannot get benchmarks from Order : %v\r\n", order.Id.Unwrap().Int64())
-						return err
+						return fmt.Errorf("Cannot get benchmarks from Order : %v\r\n", order.Id.Unwrap().Int64())
 					}
 					tag := strconv.Itoa(int(orderDb.OrderID))
 					t.ReinvoiceOrder(ctx, cfg, &sonm.Price{PerSecond: sonm.NewBigInt(pricePerSecForPack)}, bench, "Reinvoice(update price): "+tag)
 					t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
 				}
 			} else {
-				log.Printf("Order is not ACTIVE %v\r\n", order.Id)
+				t.c.logger.Info("Order is not ACTIVE", zap.String("oder Id", order.Id.Unwrap().String()))
 				t.c.db.UpdateOrderInDB(orderDb.OrderID, int64(OrderStatusCANCELLED))
 			}
 		}

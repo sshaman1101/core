@@ -3,7 +3,6 @@ package connor
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/sonm-io/core/connor/database"
@@ -171,7 +170,7 @@ func (p *PoolModule) UpdateAvgPoolData(ctx context.Context, poolAvgData watchers
 	poolAvgData.Update(ctx)
 	dataRH, err := poolAvgData.GetData(addr)
 	if err != nil {
-		log.Printf("Cannot get data AvgPool %vn", err)
+		p.c.logger.Error("cannot get data AvgPool", zap.Error(err))
 		return err
 	}
 

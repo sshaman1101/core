@@ -64,6 +64,9 @@ module.exports = function (deployer, network) {
             await deployer.deploy(Oracle, { gasPrice: 0 });
             let oracle = await Oracle.deployed();
 
+            // set price in Oracle
+            await oracle.setCurrentPrice('6244497036986155008', { gasPrice: 0 });
+
             // Transfer Oracle ownership to `Oracle` multisig
             oracle.transferOwnership(msOracle.address, { gasPrice: 0 });
 

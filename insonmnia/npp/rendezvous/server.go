@@ -33,13 +33,10 @@ package rendezvous
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"net"
 	"sync"
-
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/hashicorp/memberlist"
@@ -177,7 +174,7 @@ func NewServer(cfg ServerConfig, options ...Option) (*Server, error) {
 }
 
 func (m *Server) Discover(ctx context.Context, in *sonm.HandshakeRequest) (*sonm.DiscoverResponse, error) {
-	targetAddr, ok := m.continuum.Get(common.BytesToAddress(in.Addr))
+	targetAddr, ok := m.continuum.Get(nppc.ResourceID{Protocol: in.Protocol, Addr: common.BytesToAddress(in.Addr)})
 	if !ok {
 		targetAddr = m.cfg.Addr.String()
 	}
@@ -220,11 +217,11 @@ func (m *Server) Resolve(ctx context.Context, request *sonm.ConnectRequest) (*so
 	}
 	m.log.Info("resolving remote peer", zap.Stringer("id", id))
 
-	if _, ok := m.continuum.Get(common.BytesToAddress(request.ID)); !ok {
+	if _, ok := m.continuum.Get(id); !ok {
 		return nil, errWrongNode()
 	}
 
-	m.log.Info("resolving remote peer", zap.String("id", request.ID))
+	m.log.Info("resolving remote peer", zap.String("id", id.Addr.Hex()))
 
 	peerHandle := NewPeer(*peerInfo, request.PrivateAddrs)
 
@@ -239,7 +236,7 @@ func (m *Server) Resolve(ctx context.Context, request *sonm.ConnectRequest) (*so
 			return nil, status.Errorf(codes.Aborted, p.Err.Error())
 		}
 		m.log.Info("providing remote server endpoint(s)",
-			zap.String("id", id),
+			zap.String("id", id.Addr.Hex()),
 			zap.Stringer("public_addr", p.Peer.Addr),
 			zap.Any("private_addrs", p.Peer.privateAddrs),
 		)
@@ -284,20 +281,17 @@ func (m *Server) Publish(ctx context.Context, request *sonm.PublishRequest) (*so
 		Protocol: request.Protocol,
 		Addr:     *ethAddr,
 	}
-	if nodeAddr, ok := m.continuum.Get(*ethAddr); !ok || nodeAddr != m.cfg.Addr.String() {
+	if nodeAddr, ok := m.continuum.Get(id); !ok || nodeAddr != m.cfg.Addr.String() {
 		return nil, errWrongNode()
 	}
 
 	m.log.Info("publishing remote peer", zap.String("id", ethAddr.String()))
 
-	m.continuum.Track(*ethAddr)
-	id := ethAddr.String()
+	m.continuum.Track(id)
 	peerHandle := NewPeer(*peerInfo, request.PrivateAddrs)
 
 	c, deleter := m.newClientWatch(id, peerHandle)
 	defer deleter()
-
-	m.continuum.Track(*ethAddr)
 
 	select {
 	case <-ctx.Done():
@@ -307,7 +301,7 @@ func (m *Server) Publish(ctx context.Context, request *sonm.PublishRequest) (*so
 			return nil, status.Errorf(codes.Aborted, p.Err.Error())
 		}
 		m.log.Info("providing remote client endpoint(s)",
-			zap.String("id", id),
+			zap.String("id", id.Addr.String()),
 			zap.Stringer("public_addr", p.Peer.Addr),
 			zap.Any("private_addrs", p.Peer.privateAddrs),
 		)
@@ -494,11 +488,11 @@ func errNoPeerInfo() error {
 	return errors.New("no peer info provided")
 }
 
-func (m *Server) dropDiscardedPeers(discardedAddrs []common.Address) {
+func (m *Server) dropDiscardedPeers(discardedIDs []nppc.ResourceID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, addr := range discardedAddrs {
-		if room, ok := m.rv[addr.Hex()]; ok {
+	for _, id := range discardedIDs {
+		if room, ok := m.rv[id]; ok {
 			for _, server := range room.servers {
 				server.C <- peerOrError{Err: errors.New("server dropped due to cluster reconfiguration")}
 			}

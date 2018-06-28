@@ -72,17 +72,12 @@ func (p *PoolModule) AddWorkerToPoolDB(ctx context.Context, deal *sonm.DealInfoR
 	}
 	if val == deal.Deal.Id.String() {
 		return nil
-	} else {
-		p.c.db.SavePoolIntoDB(&database.PoolDb{
-			DealID:                 deal.Deal.Id.String(),
-			PoolID:                 addr,
-			WorkerReportedHashrate: 0,
-			WorkerAvgHashrate:      0,
-			BadGuy:                 0,
-			Iterations:             0,
-			TimeStart:              time.Now(),
-			TimeUpdate:             time.Time{},
-		})
+	}
+	if err := p.c.db.SavePoolIntoDB(&database.PoolDb{
+		DealID:    deal.Deal.Id.String(),
+		PoolID:    addr,
+		TimeStart: time.Now(),}); err != nil {
+		return err
 	}
 	return nil
 }

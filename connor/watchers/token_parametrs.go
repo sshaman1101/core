@@ -28,7 +28,7 @@ type tokenSnapshot struct {
 		General struct {
 			ID                 string  `json:"ID"`
 			Symbol             string  `json:"Symbol"`
-			BlockTime          int64     `json:"BlockTime"`
+			BlockTime          int64   `json:"BlockTime"`
 			NetHashesPerSecond float64 `json:"NetHashesPerSecond"`
 			BlockReward        float64 `json:"BlockReward"`
 		} `json:"General"`

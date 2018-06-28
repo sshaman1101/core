@@ -24,7 +24,7 @@ type TokenDb struct {
 	Name            string    `db:"NAME"`
 	UsdPrice        float64   `db:"USD_PRICE"`
 	NetHashesPerSec float64   `db:"NET_HASHES_SEC"`
-	BlockTime       int64       `db:"BLOCK_TIME"`
+	BlockTime       int64     `db:"BLOCK_TIME"`
 	BlockReward     float64   `db:"BLOCK_REWARD"`
 	ProfitPerMonth  float64   `db:"PROFIT_PER_MONTH_USD"`
 	ProfitSNM       float64   `db:"PROFIT_SNM"`

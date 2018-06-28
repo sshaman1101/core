@@ -39,8 +39,12 @@ type chargeOrdersXMRConfig struct {
 type imageConfig struct {
 	Image string `yaml:"image"`
 }
+type databaseConfig struct {
+	Driver     string `yaml:"driver"`
+	DataSource string `yaml:"data_source"`
+}
 type sensitivityConfig struct {
-	SensitivityForOrders     int64     `yaml:"reaction_to_aging_of_orders"`
+	SensitivityForOrders     int64   `yaml:"reaction_to_aging_of_orders"`
 	MarginAccounting         float64 `yaml:"margin_accounting"`
 	PartCharge               float64 `yaml:"part_charge"`
 	PartResale               float64 `yaml:"part_resale"`
@@ -68,7 +72,8 @@ type typicalBenchmark struct {
 }
 
 type Config struct {
-	Market            marketConfig          `yaml:"market"_required:"true"`
+	Market            marketConfig          `yaml:"market" required:"true"`
+	Database          databaseConfig        `yaml:"database"`
 	PoolAddress       poolAddressesConfig   `yaml:"pool_accounts" required:"false"`
 	UsingToken        usingToken            `yaml:"using_token"`
 	Distances         stepsConfig           `yaml:"step_for_token"`

@@ -6,6 +6,10 @@ log:
 market:
    endpoint: "83820f26c00e7dba7943d1ae394a1dd5e02f6d5d@127.0.0.1:15030"
 
+database:
+  driver: "sqlite3"
+  data_source: "./data.sq3"
+
 ethereum:
   key_store: "./keys"
   pass_phrase: "any"

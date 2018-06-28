@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -24,11 +25,6 @@ const (
 	cryptoCompareCoinData   = "https://www.cryptocompare.com/api/data/coinsnapshotfullbyid/?id="
 	poolReportedHashRate    = "https://api.nanopool.org/v1/eth/reportedhashrates/"
 	poolAverageHashRate     = "https://api.nanopool.org/v1/eth/avghashrateworkers/"
-)
-
-const (
-	driver     = "sqlite3"
-	dataSource = "./connor/tests/test.sq3"
 )
 
 type Connor struct {
@@ -66,7 +62,7 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 	connor.TokenClient = sonm.NewTokenManagementClient(nodeCC)
 	connor.MasterClient = sonm.NewMasterManagementClient(nodeCC)
 
-	connor.db, err = database.NewDatabaseConnect(driver, dataSource)
+	connor.db, err = database.NewDatabaseConnect(connor.cfg.Database.Driver, connor.cfg.Database.DataSource)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +83,6 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 }
 
 func (c *Connor) Serve(ctx context.Context) error {
-	var err error
 	dataUpdate := time.NewTicker(10 * time.Second)
 	defer dataUpdate.Stop()
 	tradeUpdate := time.NewTicker(15 * time.Second)
@@ -100,16 +95,16 @@ func (c *Connor) Serve(ctx context.Context) error {
 	reportedPool := watchers.NewPoolWatcher(poolReportedHashRate, []string{c.cfg.PoolAddress.EthPoolAddr})
 	avgPool := watchers.NewPoolWatcher(poolAverageHashRate, []string{c.cfg.PoolAddress.EthPoolAddr + "/1"})
 
-	if err = snm.Update(ctx); err != nil {
+	if err := snm.Update(ctx); err != nil {
 		return fmt.Errorf("cannot update snm data: %v", err)
 	}
-	if err = token.Update(ctx); err != nil {
+	if err := token.Update(ctx); err != nil {
 		return fmt.Errorf("cannot update token data: %v", err)
 	}
-	if err = reportedPool.Update(ctx); err != nil {
+	if err := reportedPool.Update(ctx); err != nil {
 		return fmt.Errorf("cannot update reportedPool data: %v", err)
 	}
-	if err = avgPool.Update(ctx); err != nil {
+	if err := avgPool.Update(ctx); err != nil {
 		return fmt.Errorf("cannot update avgPool data: %v", err)
 	}
 
@@ -125,18 +120,18 @@ func (c *Connor) Serve(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("context done")
+			return fmt.Errorf("context done %v", ctx.Err())
 		case <-dataUpdate.C:
-			if err = snm.Update(ctx); err != nil {
+			if err := snm.Update(ctx); err != nil {
 				return fmt.Errorf(" cannot update SNM data: %v\n", err)
 			}
-			if err = token.Update(ctx); err != nil {
+			if err := token.Update(ctx); err != nil {
 				return fmt.Errorf("cannot update TOKEN data: %v\n", err)
 			}
-			if err = reportedPool.Update(ctx); err != nil {
+			if err := reportedPool.Update(ctx); err != nil {
 				return fmt.Errorf("cannot update reported pool data: %v\n", err)
 			}
-			if err = avgPool.Update(ctx); err != nil {
+			if err := avgPool.Update(ctx); err != nil {
 				return fmt.Errorf("cannot update avg pool data: %v\n", err)
 			}
 			go profitModule.CollectTokensMiningProfit(token)
@@ -145,17 +140,19 @@ func (c *Connor) Serve(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("cannot save active deals : %v\n", err)
 			}
+
 			_, pricePerSec, err := traderModule.GetPriceForTokenPerSec(token, c.cfg.UsingToken.Token)
 			if err != nil {
 				return fmt.Errorf("cannot get pricePerSec for token per sec %v\r\n", err)
 			}
+
 			actualPrice := traderModule.FloatToBigInt(pricePerSec)
 			deals, err := traderModule.c.db.GetDealsFromDB()
 			if err != nil {
 				return fmt.Errorf("cannot get deals from DB %v\r\n", err)
 			}
 			if len(deals) > 0 {
-				err = traderModule.DealsProfitTracking(ctx, actualPrice, deals, c.cfg.Images.Image)
+				err := traderModule.DealsProfitTracking(ctx, actualPrice, deals, c.cfg.Images.Image)
 				if err != nil {
 					return fmt.Errorf("cannot start deals profit tracking: %v", err)
 				}

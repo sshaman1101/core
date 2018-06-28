@@ -4,18 +4,18 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"time"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sonm-io/core/proto"
 	"github.com/sonm-io/core/util"
 	"github.com/sonm-io/core/util/xgrpc"
 	"google.golang.org/grpc/credentials"
-	"time"
 
 	"github.com/noxiouz/zapctx/ctxlog"
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"go.uber.org/zap"
-	"math/big"
 )
 
 const (
@@ -141,10 +141,13 @@ func (c *Connor) Serve(ctx context.Context) error {
 			}
 			go profitModule.CollectTokensMiningProfit(token)
 		case <-tradeUpdate.C:
-			traderModule.SaveActiveDealsIntoDB(ctx, c.DealClient)
+			err := traderModule.SaveActiveDealsIntoDB(ctx, c.DealClient)
+			if err != nil {
+				return fmt.Errorf("cannot save active deals : %v\n", err)
+			}
 			_, pricePerSec, err := traderModule.GetPriceForTokenPerSec(token, c.cfg.UsingToken.Token)
 			if err != nil {
-				fmt.Printf("cannot get pricePerSec for token per sec %v\r\n", err)
+				return fmt.Errorf("cannot get pricePerSec for token per sec %v\r\n", err)
 			}
 			actualPrice := traderModule.FloatToBigInt(pricePerSec)
 			deals, err := traderModule.c.db.GetDealsFromDB()
@@ -162,7 +165,7 @@ func (c *Connor) Serve(ctx context.Context) error {
 				return fmt.Errorf("cannot get orders from DB %v\r\n", err)
 			}
 			if len(orders) > 0 {
-				err = traderModule.OrdersProfitTracking(ctx, c.cfg, actualPrice, orders)
+				err := traderModule.OrdersProfitTracking(ctx, c.cfg, actualPrice, orders)
 				if err != nil {
 					return fmt.Errorf("cannot start orders profit tracking: %v", err)
 				}
@@ -174,16 +177,16 @@ func (c *Connor) Serve(ctx context.Context) error {
 			}
 			for _, dealDb := range dealsDb {
 				if dealDb.DeployStatus == int32(DeployStatusDEPLOYED) {
-					dealOnMarket, err := c.DealClient.Status(ctx, sonm.NewBigInt(big.NewInt(0).SetInt64(dealDb.DealID)))
+					dealOnMarket, err := c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
 					if err != nil {
 						return fmt.Errorf("cannot get deal from market %v", dealDb.DealID)
 					}
-					if err = poolModule.AddWorkerToPoolDB(ctx, dealOnMarket, c.cfg.PoolAddress.EthPoolAddr); err != nil {
+					if err := poolModule.AddWorkerToPoolDB(ctx, dealOnMarket, c.cfg.PoolAddress.EthPoolAddr); err != nil {
 						return err
 					}
 				}
 			}
-			if err = poolModule.AdvancedPoolHashrateTracking(ctx, reportedPool, avgPool); err != nil {
+			if err := poolModule.DefaultPoolHashrateTracking(ctx, reportedPool, avgPool); err != nil {
 				return err
 			}
 		}

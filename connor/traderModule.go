@@ -3,15 +3,16 @@ package connor
 import (
 	"context"
 	"fmt"
+	"log"
+	"math/big"
+	"strconv"
+	"time"
+
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/proto"
 	"go.uber.org/zap"
-	"log"
-	"math/big"
-	"strconv"
-	"time"
 )
 
 const (
@@ -306,7 +307,7 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 		if err != nil {
 			return fmt.Errorf("сannot get clone price: %v", err)
 		}
-		dealOnMarket, err := t.c.DealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(dealDb.DealID).Bytes()})
+		dealOnMarket, err := t.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
 		if err != nil {
 			return fmt.Errorf("cannot get deal info %v\r\n", err)
 		}
@@ -344,7 +345,7 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 			}
 
 		} else if dealOnMarket.Deal.Status != sonm.DealStatus_DEAL_CLOSED && dealDb.DeployStatus == int32(DeployStatusNOTDEPLOYED) {
-			getDealFromMarket, err := t.c.DealClient.Status(ctx, &sonm.BigInt{Abs: big.NewInt(dealDb.DealID).Bytes()})
+			getDealFromMarket, err := t.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(dealDb.DealID))
 			if err != nil {
 				return fmt.Errorf("cannot get deal from Market %v\r\n", err)
 			}

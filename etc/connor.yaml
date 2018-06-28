@@ -55,7 +55,7 @@ sensitivity:
 
 other_parameters:
   identity_for_bid: "ANONYMOUS"
-  email_for_pool: "haiirotaishosanshoku@gmail.com"
+  email_for_pool: ""
 # Container fot task app
 images:
   image: "any"

@@ -3,13 +3,13 @@ package connor
 import (
 	"context"
 	"fmt"
+	"log"
+	"strconv"
+	"time"
+
 	"github.com/sonm-io/core/connor/database"
 	"github.com/sonm-io/core/connor/watchers"
 	"github.com/sonm-io/core/proto"
-	"log"
-	"math/big"
-	"strconv"
-	"time"
 )
 
 const (
@@ -106,7 +106,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 			return fmt.Errorf("cannot atoi returns %v", err)
 		}
 
-		dealInfo, err := p.c.DealClient.Status(ctx, sonm.NewBigInt(big.NewInt(0).SetInt64(int64(wId))))
+		dealInfo, err := p.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(int64(wId)))
 		if err != nil {
 			log.Printf("Cannot get deal from market %v\r\n", w.DealID)
 			return err

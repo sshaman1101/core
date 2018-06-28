@@ -93,7 +93,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 		if w.BadGuy > numberOfLives {
 			continue
 		}
-		iteration := int32(w.Iterations + 1)
+		iteration := int64(w.Iterations + 1)
 		dealInfo, err := p.c.DealClient.Status(ctx, sonm.NewBigIntFromInt(w.DealID))
 		if err != nil {
 			return fmt.Errorf("cannot get deal from market %v\r\n", w.DealID)
@@ -115,8 +115,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 
 		} else {
 			p.UpdateAvgPoolData(ctx, avgPool, p.c.cfg.PoolAddress.EthPoolAddr+"/1")
-			p.c.logger.Info("Getting avg pool data for worker::",
-				zap.Int64("deal ::", w.DealID))
+			p.c.logger.Info("Getting avg pool data for worker::", zap.Int64("deal ::", w.DealID))
 			changeAvgWorker := 100 - ((uint64(w.WorkerAvgHashrate*hashes) * 100) / bidHashrate)
 			if err = p.DetectingDeviation(ctx, changeAvgWorker, w, dealInfo); err != nil {
 				return err
@@ -137,15 +136,13 @@ func (p *PoolModule) DetectingDeviation(ctx context.Context, changePercentDeviat
 			if err := p.DestroyDeal(ctx, dealInfo); err != nil {
 				return err
 			}
-			p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int32(BanStatusWORKERINPOOL), time.Now())
-			p.c.logger.Info("Destroy deal",
-				zap.String("bad status in Pool", dealInfo.Deal.Id.String()))
+			p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int64(BanStatusWORKERINPOOL), time.Now())
+			p.c.logger.Info("Destroy deal", zap.String("bad status in Pool", dealInfo.Deal.Id.String()))
 		}
 	} else if changePercentDeviationWorker >= 20 {
 		p.DestroyDeal(ctx, dealInfo)
-		p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int32(BanStatusWORKERINPOOL), time.Now())
-		p.c.logger.Info("Destroy deal",
-			zap.String("bad status in Pool", dealInfo.Deal.Id.String()))
+		p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int64(BanStatusWORKERINPOOL), time.Now())
+		p.c.logger.Info("Destroy deal", zap.String("bad status in Pool", dealInfo.Deal.Id.String()))
 	}
 	return nil
 }
@@ -174,7 +171,7 @@ func (p *PoolModule) UpdateAvgPoolData(ctx context.Context, poolAvgData watchers
 	poolAvgData.Update(ctx)
 	dataRH, err := poolAvgData.GetData(addr)
 	if err != nil {
-		log.Printf("Cannot get data AvgPool  --> %v\r\n", err)
+		log.Printf("Cannot get data AvgPool %vn", err)
 		return err
 	}
 
@@ -202,7 +199,7 @@ func (p *PoolModule) SendToConnorBlackList(ctx context.Context, failedDeal *sonm
 			p.c.db.SaveBlacklistIntoDB(&database.BlackListDb{
 				MasterID:       wM.MasterID.Unwrap().Hex(),
 				FailSupplierId: wM.SlaveID.Unwrap().Hex(),
-				BanStatus:      int32(BanStatusBANNED),
+				BanStatus:      int64(BanStatusBANNED),
 			})
 		}
 	}
@@ -214,8 +211,8 @@ func (p *PoolModule) SendToConnorBlackList(ctx context.Context, failedDeal *sonm
 
 	if percentFailWorkers > p.c.cfg.Sensitivity.BadWorkersPercent {
 		p.DestroyDeal(ctx, failedDeal)
-		p.c.db.UpdateBanStatusBlackListDB(failedDeal.Deal.MasterID.Unwrap().Hex(), int32(BanStatusMASTERBAN))
-		p.c.db.UpdateWorkerStatusInPoolDB(failedDeal.Deal.Id.Unwrap().Int64(), int32(BanStatusWORKERINPOOL), time.Now())
+		p.c.db.UpdateBanStatusBlackListDB(failedDeal.Deal.MasterID.Unwrap().Hex(), int64(BanStatusMASTERBAN))
+		p.c.db.UpdateWorkerStatusInPoolDB(failedDeal.Deal.Id.Unwrap().Int64(), int64(BanStatusWORKERINPOOL), time.Now())
 	}
 	return nil
 }
@@ -223,7 +220,7 @@ func (p *PoolModule) SendToConnorBlackList(ctx context.Context, failedDeal *sonm
 func (p *PoolModule) ReturnBidHashrateForDeal(ctx context.Context, dealInfo *sonm.DealInfoReply) (uint64, error) {
 	bidOrder, err := p.c.Market.GetOrderByID(ctx, &sonm.ID{Id: dealInfo.Deal.BidID.Unwrap().String()})
 	if err != nil {
-		log.Printf("cannot get order from market by ID")
+		p.c.logger.Error("cannot get order from market by ID", zap.Error(err))
 		return 0, err
 	}
 	return bidOrder.GetBenchmarks().GPUEthHashrate(), nil
@@ -231,10 +228,13 @@ func (p *PoolModule) ReturnBidHashrateForDeal(ctx context.Context, dealInfo *son
 
 // Create deal finish request
 func (p *PoolModule) DestroyDeal(ctx context.Context, dealInfo *sonm.DealInfoReply) error {
-	p.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
+	if _, err := p.c.DealClient.Finish(ctx, &sonm.DealFinishRequest{
 		Id:            dealInfo.Deal.Id,
 		BlacklistType: sonm.BlacklistType_BLACKLIST_MASTER,
-	})
-	log.Printf("This deal is destroyed (the number of mistakes of a worker is too high) : %v!\r\n", dealInfo.Deal.Id)
+	}); err !=nil{
+		p.c.logger.Error("couldn't finish deal", zap.Error(err))
+		return err
+	}
+	p.c.logger.Info("Destroyed deal", zap.String("deal",dealInfo.Deal.Id.Unwrap().String()))
 	return nil
 }

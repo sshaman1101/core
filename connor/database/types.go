@@ -7,7 +7,7 @@ type PoolDb struct {
 	PoolID                 string    `db:"POOL_ID"`
 	WorkerReportedHashrate float64   `db:"W_REP_HASH"`
 	WorkerAvgHashrate      float64   `db:"W_AVG_HASH"`
-	BadGuy                 int32     `db:"BAD_GUY"`
+	BadGuy                 int64     `db:"BAD_GUY"`
 	Iterations             int64     `db:"ITERATIONS"`
 	TimeStart              time.Time `db:"TIME_START"`
 	TimeUpdate             time.Time `db:"TIME_UPDATE"`
@@ -16,7 +16,7 @@ type PoolDb struct {
 type BlackListDb struct {
 	MasterID       string `db:"MASTER_ID"`
 	FailSupplierId string `db:"FAIL_SUPPLIER_ID"`
-	BanStatus      int32  `db:"BAN_STATUS"`
+	BanStatus      int64  `db:"BAN_STATUS"`
 }
 
 type TokenDb struct {
@@ -33,7 +33,7 @@ type TokenDb struct {
 
 type DealDb struct {
 	DealID       int64     `db:"ID"`
-	Status       int32     `db:"STATUS"`
+	Status       int64     `db:"STATUS"`
 	Price        int64     `db:"PRICE"`
 	AskID        int64     `db:"ASK_ID"`
 	BidID        int64     `db:"BID_ID"`
@@ -47,6 +47,6 @@ type OrderDb struct {
 	Price           int64     `db:"PRICE"`
 	Hashrate        uint64    `db:"HASHRATE"`
 	StartTime       time.Time `db:"START_TIME"`
-	ButterflyEffect int32     `db:"BUTTERFLY_EFFECT"`
+	ButterflyEffect int64     `db:"BUTTERFLY_EFFECT"`
 	ActualStep      float64   `db:"ACTUAL_STEP"`
 }

@@ -174,15 +174,15 @@ func (t *TraderModule) CreateOrderOnMarketStep(ctx context.Context, step float64
 			Price:           actOrder.GetPrice().Unwrap().Int64(),
 			Hashrate:        actOrder.GetBenchmarks().GPUEthHashrate(),
 			StartTime:       time.Now(),
-			ButterflyEffect: int32(actOrder.GetOrderStatus()),
+			ButterflyEffect: int64(actOrder.GetOrderStatus()),
 			ActualStep:      reBuyHash,
 		}); err != nil {
 			return 0, fmt.Errorf("cannot save order to database: %v", err)
 		}
-		log.Printf("Order created ==> ID: %v, Price: %v $, Hashrate: %v H/s \r\n",
-			actOrder.GetId().Unwrap().Int64(),
-			sonm.NewBigInt(actOrder.GetPrice().Unwrap()).ToPriceString(),
-			actOrder.GetBenchmarks().GPUEthHashrate())
+		t.c.logger.Info("Order created",
+			zap.Int64("id", actOrder.GetId().Unwrap().Int64()),
+			zap.String("price", sonm.NewBigInt(actOrder.GetPrice().Unwrap()).ToPriceString()),
+			zap.Uint64("hashrate", actOrder.GetBenchmarks().GPUEthHashrate()))
 		return reBuyHash, nil
 	}
 	return buyMgHash, nil
@@ -234,13 +234,13 @@ func (t *TraderModule) ReinvoiceOrder(ctx context.Context, cfg *Config, price *s
 		Price:           order.GetPrice().Unwrap().Int64(),
 		Hashrate:        order.GetBenchmarks().GPUEthHashrate(),
 		StartTime:       time.Now(),
-		ButterflyEffect: int32(OrderStatusREINVOICE),
+		ButterflyEffect: int64(OrderStatusREINVOICE),
 		ActualStep:      0,
 	}); err != nil {
 		return fmt.Errorf("cannot save reinvoice order %s to DB: %v \r\n", order.GetId().Unwrap().String(), err)
 	}
-	log.Printf("REINVOICE Order ===> %v created (descendant: %v), price: %v, hashrate: %v",
-		order.GetId(), tag, order.GetPrice(), order.GetBenchmarks().GPUEthHashrate())
+	t.c.logger.Info("REINVOICE Order", zap.String("Order", order.Id.Unwrap().String()), zap.String("tag", tag),
+		zap.String("price", order.Price.Unwrap().String()), zap.Uint64("hashrate", order.GetBenchmarks().GPUEthHashrate()))
 	return nil
 }
 
@@ -263,7 +263,7 @@ func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, ac
 			t.c.logger.Error("cannot get order from market", zap.Error(err))
 			return err
 		}
-		if orderDb.ButterflyEffect != int32(OrderStatusCANCELLED) {
+		if orderDb.ButterflyEffect != int64(OrderStatusCANCELLED) {
 			if order.GetOrderStatus() == sonm.OrderStatus_ORDER_ACTIVE {
 				orderPrice := order.Price.Unwrap()
 				pack := int64(order.GetBenchmarks().GPUEthHashrate()) / hashes
@@ -289,7 +289,7 @@ func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, ac
 				}
 			} else {
 				log.Printf("Order is not ACTIVE %v\r\n", order.Id)
-				t.c.db.UpdateOrderInDB(orderDb.OrderID, int32(OrderStatusCANCELLED))
+				t.c.db.UpdateOrderInDB(orderDb.OrderID, int64(OrderStatusCANCELLED))
 			}
 		}
 	}
@@ -348,24 +348,24 @@ func (t *TraderModule) DealsProfitTracking(ctx context.Context, actualPrice *big
 			t.c.logger.Info("Deploying NEW CONTAINER", zap.Int64("deal", dealDb.DealID))
 			task, err := t.pool.DeployNewContainer(ctx, t.c.cfg, deal, image)
 			if err != nil {
-				t.c.db.UpdateDealInDB(deal.Id.Unwrap().Int64(), int32(DeployStatusNOTDEPLOYED))
+				t.c.db.UpdateDealInDB(deal.Id.Unwrap().Int64(), int64(DeployStatusNOTDEPLOYED))
 				return fmt.Errorf("cannot deploy new container from task %s\r\n", err)
 			} else {
-				t.c.db.UpdateDealInDB(deal.Id.Unwrap().Int64(), int32(DeployStatusDEPLOYED))
+				t.c.db.UpdateDealInDB(deal.Id.Unwrap().Int64(), int64(DeployStatusDEPLOYED))
 				t.c.logger.Info("New deployed TASK", zap.String("task", task.GetId()), zap.String("deal", deal.GetId().String()))
 			}
 
 			bidOrder, err := t.c.Market.GetOrderByID(ctx, &sonm.ID{Id: deal.GetBidID().String()})
 			if err != nil {
-				fmt.Printf("Cannot get order by Id: %v\r\n", err)
-				return err
+				return fmt.Errorf("cannot get order by Id: %v\r\n", err)
 			}
 			bench, err := t.GetBidBenchmarks(bidOrder)
 			if err != nil {
-				fmt.Printf("Cannot get benchmarks from bid Order : %v\r\n", bidOrder.Id.Unwrap().Int64())
-				return err
+				return fmt.Errorf("cannot get benchmarks from bid Order : %v\r\n", bidOrder.Id.Unwrap().Int64())
 			}
-			t.ReinvoiceOrder(ctx, t.c.cfg, &sonm.Price{PerSecond: deal.GetPrice()}, bench, "Reinvoice(active deal)")
+			if err := t.ReinvoiceOrder(ctx, t.c.cfg, &sonm.Price{PerSecond: deal.GetPrice()}, bench, "Reinvoice(active deal)"); err != nil {
+				return fmt.Errorf("cannot reinvoice order %v", err)
+			}
 		}
 	}
 	return nil
@@ -412,15 +412,14 @@ func (t *TraderModule) GetChangePercent(actualPriceForPack *big.Int, dealPrice *
 func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.DealManagementClient) error {
 	getDeals, err := dealCli.List(ctx, &sonm.Count{Count: 100})
 	if err != nil {
-		fmt.Printf("Cannot get Deals list %v\r\n", err)
-		return err
+		return fmt.Errorf("Cannot get Deals list %v\r\n", err)
 	}
 	deals := getDeals.Deal
 	if len(deals) > 0 {
 		for _, deal := range deals {
 			t.c.db.SaveDealIntoDB(&database.DealDb{
 				DealID:       deal.GetId().Unwrap().Int64(),
-				Status:       int32(deal.GetStatus()),
+				Status:       int64(deal.GetStatus()),
 				Price:        deal.GetPrice().Unwrap().Int64(),
 				AskID:        deal.GetAskID().Unwrap().Int64(),
 				BidID:        deal.GetBidID().Unwrap().Int64(),
@@ -430,8 +429,7 @@ func (t *TraderModule) SaveActiveDealsIntoDB(ctx context.Context, dealCli sonm.D
 			})
 		}
 	} else {
-		log.Printf("No active deals\r\n")
-		time.Sleep(15 * time.Second)
+		t.c.logger.Info("No active deals")
 	}
 	return nil
 }
@@ -460,7 +458,7 @@ func (t *TraderModule) GetBidBenchmarks(bidOrder *sonm.Order) (map[string]uint64
 		"net-upload":          getBench.NetTrafficOut(),
 		"gpu-count":           getBench.GPUCount(),
 		"gpu-mem":             getBench.GPUMem(),
-		"gpu-eth-hashrate":    getBench.GPUEthHashrate(), // H/s
+		"gpu-eth-hashrate":    getBench.GPUEthHashrate(),
 	}
 	return bMap, nil
 }
@@ -503,13 +501,6 @@ func (t *TraderModule) getBenchmarksForSymbol(symbol string, ethHashRate uint64)
 	}
 }
 
-//func (t *TraderModule) PriceToString(c *big.Int) string {
-//	v := big.NewFloat(0).SetInt(c)
-//	div := big.NewFloat(params.Ether)
-//	r := big.NewFloat(0).Quo(v, div)
-//	return r.Text('f', -18)
-//}
-
 //FIXME: Redo the waiting time for old orders
 // Get orders FROM DATABASE ==> if order's created time more cfg.Days -> order is cancelled ==> save to BD as "cancelled" (3).
 func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config) {
@@ -523,7 +514,7 @@ func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config)
 			fmt.Printf("Orders suspected of cancellation: : %v, passed time: %v\r\n", o.OrderID, subtract)
 			//TODO: change status to "Cancelled"
 			t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(o.OrderID))})
-			t.c.db.UpdateOrderInDB(o.OrderID, int32(OrderStatusCANCELLED))
+			t.c.db.UpdateOrderInDB(o.OrderID, int64(OrderStatusCANCELLED))
 		}
 	}
 }

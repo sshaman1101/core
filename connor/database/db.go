@@ -116,21 +116,21 @@ func (d *Database) SavePoolIntoDB(pool *PoolDb) error {
 	return nil
 }
 
-func (d *Database) UpdateOrderInDB(id int64, bfly int32) error {
+func (d *Database) UpdateOrderInDB(id int64, bfly int64) error {
 	_, err := d.connect.Exec(updateOrders, bfly, id)
 	if err != nil {
 		return err
 	}
 	return nil
 }
-func (d *Database) UpdateDealInDB(id int64, deployStatus int32) error {
+func (d *Database) UpdateDealInDB(id int64, deployStatus int64) error {
 	_, err := d.connect.Exec(updateDeals, deployStatus, id)
 	if err != nil {
 		return err
 	}
 	return nil
 }
-func (d *Database) UpdateWorkerStatusInPoolDB(id int64, badGuy int32, timeUpdate time.Time) error {
+func (d *Database) UpdateWorkerStatusInPoolDB(id int64, badGuy int64, timeUpdate time.Time) error {
 	_, err := d.connect.Exec(updateStatusPoolDB, badGuy, timeUpdate, id)
 	if err != nil {
 		return err
@@ -152,7 +152,7 @@ func (d *Database) UpdateAvgPoolDB(id string, avgHashrate float64, timeUpdate ti
 	return nil
 }
 
-func (d *Database) UpdateBanStatusBlackListDB(masterID string, banStatus int32) error {
+func (d *Database) UpdateBanStatusBlackListDB(masterID string, banStatus int64) error {
 	_, err := d.connect.Exec(updateBlackList, banStatus, masterID)
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func (d *Database) UpdateBanStatusBlackListDB(masterID string, banStatus int32) 
 	return nil
 }
 
-func (d *Database) UpdateIterationPoolDB(iteration int32, id int64) error {
+func (d *Database) UpdateIterationPoolDB(iteration int64, id int64) error {
 	_, err := d.connect.Exec(updateIterationPool, iteration, id)
 	if err != nil {
 		return err

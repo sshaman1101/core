@@ -103,7 +103,7 @@ func (t *TraderModule) ChargeOrdersOnce(ctx context.Context, symbol string, toke
 
 	pricePackMhInUSDPerMonth := mhashForToken * (pricePerMonthUSD * t.c.cfg.Sensitivity.MarginAccounting)
 	sumOrdersPerMonth := limitChargeInUSD / pricePackMhInUSDPerMonth
-	if limitChargeInSNM.Int64() <= 0 {
+	if limitChargeInSNM.Cmp(big.NewInt(0)) <= -1 {
 		t.c.logger.Error("balance SNM is not enough for create orders!", zap.Error(err))
 		return err
 	}
@@ -289,7 +289,7 @@ func (t *TraderModule) OrdersProfitTracking(ctx context.Context, cfg *Config, ac
 					t.c.Market.CancelOrder(ctx, &sonm.ID{Id: strconv.Itoa(int(orderDb.OrderID))})
 				}
 			} else {
-				t.c.logger.Info("Order is not ACTIVE", zap.String("oder Id", order.Id.Unwrap().String()))
+				t.c.logger.Info("Order is not ACTIVE", zap.String("Id", order.Id.Unwrap().String()))
 				t.c.db.UpdateOrderInDB(orderDb.OrderID, int64(OrderStatusCANCELLED))
 			}
 		}
@@ -518,4 +518,11 @@ func (t *TraderModule) CheckAndCancelOldOrders(ctx context.Context, cfg *Config)
 			t.c.db.UpdateOrderInDB(o.OrderID, int64(OrderStatusCANCELLED))
 		}
 	}
+}
+
+func (t *TraderModule) PriceToString(c *big.Int) string {
+	v := big.NewFloat(0).SetInt(c)
+	div := big.NewFloat(params.Ether)
+	r := big.NewFloat(0).Quo(v, div)
+	return r.Text('f', -18)
 }

@@ -89,9 +89,6 @@ func (p *ProfitableModule) CollectTokensMiningProfit(t watchers.TokenWatcher) ([
 	return tokensForCalc, nil
 }
 func (p *ProfitableModule) CalculateMiningProfit(usd, hashesPerSecond, netHashesPerSecond, blockReward, div float64, blockTime int64) float64 {
-	if div == 0 {
-		//todo:
-	}
 	currentHashingPower := hashesPerSecond / div
 	miningShare := currentHashingPower / (netHashesPerSecond + currentHashingPower)
 	minedPerDay := miningShare * 86400 / float64(blockTime) * blockReward / div

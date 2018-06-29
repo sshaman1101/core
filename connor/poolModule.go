@@ -114,7 +114,7 @@ func (p *PoolModule) DefaultPoolHashrateTracking(ctx context.Context, reportedPo
 
 		} else {
 			p.UpdateAvgPoolData(ctx, avgPool, p.c.cfg.PoolAddress.EthPoolAddr+"/1")
-			p.c.logger.Info("Getting avg pool data for worker", zap.Int64("deal", w.DealID))
+			p.c.logger.Info("getting avg pool data for worker", zap.Int64("deal", w.DealID))
 			changeAvgWorker := 100 - ((uint64(w.WorkerAvgHashrate*hashes) * 100) / bidHashrate)
 			if err = p.DetectingDeviation(ctx, changeAvgWorker, w, dealInfo); err != nil {
 				return err
@@ -136,12 +136,12 @@ func (p *PoolModule) DetectingDeviation(ctx context.Context, changePercentDeviat
 				return err
 			}
 			p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int64(BanStatusWORKERINPOOL), time.Now())
-			p.c.logger.Info("Destroy deal", zap.String("bad status in Pool", dealInfo.Deal.Id.String()))
+			p.c.logger.Info("Destroy deal", zap.String("bad status in pool", dealInfo.Deal.Id.String()))
 		}
 	} else if changePercentDeviationWorker >= 20 {
 		p.DestroyDeal(ctx, dealInfo)
 		p.c.db.UpdateWorkerStatusInPoolDB(worker.DealID, int64(BanStatusWORKERINPOOL), time.Now())
-		p.c.logger.Info("Destroy deal", zap.String("bad status in Pool", dealInfo.Deal.Id.String()))
+		p.c.logger.Info("Destroy deal", zap.String("bad status in pool", dealInfo.Deal.Id.String()))
 	}
 	return nil
 }
@@ -151,13 +151,13 @@ func (p *PoolModule) UpdateRHPoolData(ctx context.Context, poolRHData watchers.P
 	poolRHData.Update(ctx)
 	dataRH, err := poolRHData.GetData(addr)
 	if err != nil {
-		p.c.logger.Warn("cannot get data RH", zap.Error(err))
+		p.c.logger.Warn("cannot get reported hashrate data", zap.Error(err))
 		return err
 	}
 
 	for _, rh := range dataRH.Data {
 		p.c.db.UpdateReportedHashratePoolDB(rh.Worker, rh.Hashrate, time.Now())
-		p.c.logger.Info("Update reported hashrate data in DB :: ",
+		p.c.logger.Info("update reported hashrate data in database :: ",
 			zap.String("worker", rh.Worker),
 			zap.Float64("hashrate", rh.Hashrate),
 		)
@@ -170,7 +170,7 @@ func (p *PoolModule) UpdateAvgPoolData(ctx context.Context, poolAvgData watchers
 	poolAvgData.Update(ctx)
 	dataRH, err := poolAvgData.GetData(addr)
 	if err != nil {
-		p.c.logger.Error("cannot get data AvgPool", zap.Error(err))
+		p.c.logger.Error("cannot get average pool data", zap.Error(err))
 		return err
 	}
 
@@ -234,6 +234,6 @@ func (p *PoolModule) DestroyDeal(ctx context.Context, dealInfo *sonm.DealInfoRep
 		p.c.logger.Error("couldn't finish deal", zap.Error(err))
 		return err
 	}
-	p.c.logger.Info("Destroyed deal", zap.String("deal", dealInfo.Deal.Id.Unwrap().String()))
+	p.c.logger.Info("destroyed deal", zap.String("deal", dealInfo.Deal.Id.Unwrap().String()))
 	return nil
 }

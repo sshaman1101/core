@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	log "github.com/noxiouz/zapctx/ctxlog"
 	"github.com/sonm-io/core/cmd"
 	"github.com/sonm-io/core/connor"
+	"github.com/sonm-io/core/insonmnia/logging"
 )
 
 var (
@@ -28,7 +30,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("cannot open keys: %v\r\n", err)
 	}
-	ctx := context.Background()
+
+	logger := logging.BuildLogger(cfg.Log.LogLevel())
+	ctx := log.WithLogger(context.Background(), logger)
 
 	c, err := connor.NewConnor(ctx, key, cfg)
 	if err != nil {

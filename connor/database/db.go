@@ -7,6 +7,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/sonm-io/core/proto"
 )
 
 type Database struct {
@@ -142,6 +143,14 @@ func (d *Database) SavePoolIntoDB(pool *PoolDb) error {
 	return nil
 }
 
+func (d *Database) UpdateDealStatusDb(id int64, status sonm.DealStatus)error{
+	_, err := d.connect.Exec(updateStatusDeal, status, id)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (d *Database) UpdateOrderInDB(id int64, bfly int64) error {
 	_, err := d.connect.Exec(updateOrders, bfly, id)
 	if err != nil {
@@ -149,8 +158,8 @@ func (d *Database) UpdateOrderInDB(id int64, bfly int64) error {
 	}
 	return nil
 }
-func (d *Database) UpdateDealInDB(id int64, deployStatus int64) error {
-	_, err := d.connect.Exec(updateDeals, deployStatus, id)
+func (d *Database) UpdateDeployStatusDealInDB(id int64, deployStatus int64) error {
+	_, err := d.connect.Exec(updateDeployStatusDeal, deployStatus, id)
 	if err != nil {
 		return err
 	}
@@ -163,6 +172,15 @@ func (d *Database) UpdateWorkerStatusInPoolDB(id int64, badGuy int64, timeUpdate
 	}
 	return nil
 }
+
+func (d *Database) UpdateChangeRequestStatusDealDB(id int64, status sonm.ChangeRequestStatus, timeUpdate time.Time) error {
+	_, err := d.connect.Exec(updateCRStatusDeal, status, id)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (d *Database) UpdateReportedHashratePoolDB(id string, reportedHashrate float64, timeUpdate time.Time) error {
 	_, err := d.connect.Exec(updateReportedHashrate, reportedHashrate, timeUpdate, id)
 	if err != nil {
@@ -316,7 +334,7 @@ func (d *Database) GetDealsFromDB() ([]*DealDb, error) {
 	deals := make([]*DealDb, 0)
 	for rows.Next() {
 		deal := new(DealDb)
-		err := rows.Scan(&deal.DealID, &deal.Status, &deal.Price, &deal.AskID, &deal.BidID, &deal.DeployStatus)
+		err := rows.Scan(&deal.DealID, &deal.Status, &deal.Price, &deal.AskID, &deal.BidID, &deal.DeployStatus, &deal.ChangeRequestStatus)
 		if err != nil {
 			return nil, err
 		}

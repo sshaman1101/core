@@ -10,6 +10,7 @@ import (
 	"github.com/sonm-io/core/proto"
 	"github.com/sonm-io/core/util"
 	"github.com/sonm-io/core/util/xgrpc"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/noxiouz/zapctx/ctxlog"
@@ -73,13 +74,13 @@ func NewConnor(ctx context.Context, key *ecdsa.PrivateKey, cfg *Config) (*Connor
 	}
 
 	connor.logger = ctxlog.GetLogger(ctx)
-	connor.logger.Info("Config",
-		zap.String("Eth Node address", cfg.Market.Endpoint),
+	connor.logger.Info("config",
+		zap.String("eth node address", cfg.Market.Endpoint),
 		zap.String("key", crypto.PubkeyToAddress(key.PublicKey).String()))
-	connor.logger.Info("Balance",
+	connor.logger.Info("balance",
 		zap.String("live", balanceReply.GetLiveBalance().Unwrap().String()),
 		zap.String("Side", balanceReply.GetSideBalance().ToPriceString()))
-	connor.logger.Info("configuring Connor", zap.Any("config", cfg))
+	connor.logger.Info("configuring connor", zap.Any("config", cfg))
 	return connor, nil
 }
 
@@ -121,8 +122,10 @@ func (c *Connor) Serve(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	go traderModule.ChargeOrdersOnce(ctx, c.cfg.UsingToken.Token, token, snm, balanceReply)
-
+	md := errgroup.Group{}
+	md.Go(func() error {
+		return traderModule.ChargeOrdersOnce(ctx, c.cfg.UsingToken.Token, token, snm, balanceReply)
+	})
 	for {
 		select {
 		case <-ctx.Done():
@@ -142,27 +145,32 @@ func (c *Connor) Serve(ctx context.Context) error {
 			}
 			go profitModule.CollectTokensMiningProfit(token)
 		case <-tradeUpdate.C:
-			err := traderModule.SaveActiveDealsIntoDB(ctx, c.DealClient)
+			err := traderModule.SaveNewActiveDealsIntoDB(ctx)
 			if err != nil {
 				return fmt.Errorf("cannot save active deals : %v\n", err)
+			}
+			if err := traderModule.UpdateDealsIntoDb(ctx); err != nil {
+				return err
 			}
 			_, pricePerSec, err := traderModule.GetPriceForTokenPerSec(token, c.cfg.UsingToken.Token)
 			if err != nil {
 				return fmt.Errorf("cannot get pricePerSec for token per sec %v\r\n", err)
 			}
 			actualPrice := traderModule.FloatToBigInt(pricePerSec)
-
+			c.logger.Info("new actual price hashes per sec", zap.String("price", sonm.NewBigInt(actualPrice).ToPriceString()))
 			dealsDb, err := traderModule.c.db.GetDealsFromDB()
 			if err != nil {
 				return fmt.Errorf("cannot get deals from DB %v\r\n", err)
 			}
-			//TODO: последовательно или вместе? go-routines
-			for _, deal := range dealsDb {
-				if deal.Status == int64(DeployStatusNOTDEPLOYED) {
-					traderModule.ResponseToActiveDeals(ctx, deal, c.cfg.Images.Image)
-				}
-				if deal.Status == int64(DeployStatusDEPLOYED) {
-					traderModule.DeployedDealsProfitTrack(ctx, actualPrice, deal, c.cfg.Images.Image)
+			for _, dealDb := range dealsDb {
+				if dealDb.Status != int64(sonm.DealStatus_DEAL_CLOSED) {
+					if dealDb.DeployStatus == int64(DeployStatusNOTDEPLOYED) {
+						traderModule.ResponseToActiveDeals(ctx, dealDb, c.cfg.Images.Image)
+					} else if dealDb.DeployStatus == int64(DeployStatusDEPLOYED) && dealDb.ChangeRequestStatus != int64(sonm.ChangeRequestStatus_REQUEST_CREATED){
+						md.Go(func() error {
+							return traderModule.DeployedDealsProfitTrack(ctx, actualPrice, dealDb, c.cfg.Images.Image)
+						})
+					}
 				}
 			}
 
@@ -171,8 +179,8 @@ func (c *Connor) Serve(ctx context.Context) error {
 				return fmt.Errorf("cannot get orders from DB %v\r\n", err)
 			}
 			for _, order := range orders {
-				if order.ButterflyEffect != 3 {
-					err := traderModule.OrdersProfitTracking(ctx, c.cfg, actualPrice, order);
+				if order.ButterflyEffect != int64(OrderStatusCANCELLED) {
+					err := traderModule.OrdersProfitTracking(ctx, c.cfg, actualPrice, order)
 					if err != nil {
 						return fmt.Errorf("cannot start orders profit tracking: %v", err)
 					}
@@ -194,7 +202,7 @@ func (c *Connor) Serve(ctx context.Context) error {
 					}
 				}
 			}
-			if err := poolModule.DefaultPoolHashrateTracking(ctx, reportedPool, avgPool); err != nil {
+			if err := poolModule.AdvancedPoolHashrateTracking(ctx, reportedPool, avgPool); err != nil {
 				return err
 			}
 		}

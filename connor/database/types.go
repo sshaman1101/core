@@ -32,12 +32,13 @@ type TokenDb struct {
 }
 
 type DealDb struct {
-	DealID       int64     `db:"ID"`
-	Status       int64     `db:"STATUS"`
-	Price        int64     `db:"PRICE"`
-	AskID        int64     `db:"ASK_ID"`
-	BidID        int64     `db:"BID_ID"`
-	DeployStatus int64     `db:"DEPLOY_STATUS"`
+	DealID              int64 `db:"ID"`
+	Status              int64 `db:"STATUS"`
+	Price               int64 `db:"PRICE"`
+	AskID               int64 `db:"ASK_ID"`
+	BidID               int64 `db:"BID_ID"`
+	DeployStatus        int64 `db:"DEPLOY_STATUS"`
+	ChangeRequestStatus int64 `db:"CHANGE_REQUEST_STATUS"`
 }
 
 type OrderDb struct {

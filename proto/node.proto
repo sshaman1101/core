@@ -65,6 +65,12 @@ service DealManagement {
     // QuickBuy places BID order with the same parameters as given ASK order have,
     // then opens deal with this two orders.
     rpc QuickBuy(QuickBuyRequest) returns (DealInfoReply) {}
+
+    rpc QuickBuy2(QuickBuyRequest) returns (DealInfoReply) {}
+    rpc QuickBuy3(QuickBuyRequest) returns (DealInfoReply) {}
+    rpc QuickBuy4(QuickBuyRequest) returns (DealInfoReply) {}
+    rpc QuickBuy5(QuickBuyRequest) returns (DealInfoReply) {}
+    rpc QuickBuy6(QuickBuyRequest) returns (DealInfoReply) {}
 }
 
 message QuickBuyRequest {

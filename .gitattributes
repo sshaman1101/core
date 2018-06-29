@@ -1,1 +1,4 @@
 *.sol linguist-language=Solidity
+vendor/* linguist-vendored=True
+proto/*.pb.go linguist-generated=True
+blockchain/source/api/* linguist-generated=True
